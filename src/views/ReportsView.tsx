@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatRM } from '../utils/currency';
 import { compareClassNames } from '../utils/classes';
+import { BulkReceiptDownloadModal } from '../components/BulkReceiptDownloadModal';
 import {
   FileSpreadsheet,
   Download,
@@ -10,11 +11,14 @@ import {
   Layers,
   ArrowDownToLine,
   TrendingUp,
+  Receipt,
+  Archive,
 } from 'lucide-react';
 
 export const ReportsView: React.FC = () => {
   const { stats, feeItems, students, transactions, allStudentSummaries, config } = useApp();
   const [activeReportTab, setActiveReportTab] = useState<'perkara' | 'kelas' | 'kaedah'>('perkara');
+  const [isBulkReceiptModalOpen, setIsBulkReceiptModalOpen] = useState(false);
 
   const totalItemRateCents = feeItems
     .filter((f) => f.active)
@@ -92,8 +96,8 @@ export const ReportsView: React.FC = () => {
         </p>
       </div>
 
-      {/* CSV Export Quick Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* CSV & Bulk Export Quick Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Export 1: Murid & Baki */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-emerald-300 transition">
@@ -151,7 +155,7 @@ export const ReportsView: React.FC = () => {
               Ringkasan Kutipan Perkara
             </h3>
             <p className="text-xs text-slate-500 mb-4">
-              Pecahan jumlah kutipan dan bilangan murid bagi setiap 11 perkara keperluan Tahun 3.
+              Pecahan jumlah kutipan dan bilangan murid bagi setiap perkara keperluan persekolahan.
             </p>
           </div>
           <a
@@ -162,6 +166,29 @@ export const ReportsView: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Muat Turun CSV Ringkasan</span>
           </a>
+        </div>
+
+        {/* Export 4: Resit Pukal (PDF / ZIP) */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-amber-300 transition ring-1 ring-amber-100">
+          <div>
+            <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
+              <Receipt className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">
+              Resit Pembayaran Pukal
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Muat turun semua resit rasmi sekaligus dalam 1 Fail PDF Gabungan atau Fail Arkib ZIP berasingan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsBulkReceiptModalOpen(true)}
+            className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-black shadow-xs text-center transition flex items-center justify-center space-x-1.5 cursor-pointer active:scale-95"
+          >
+            <Download className="w-4 h-4" />
+            <span>Muat Turun Resit Pukal</span>
+          </button>
         </div>
 
       </div>
@@ -338,6 +365,12 @@ export const ReportsView: React.FC = () => {
         )}
 
       </div>
+
+      {/* Modal Muat Turun Resit Pukal */}
+      <BulkReceiptDownloadModal
+        isOpen={isBulkReceiptModalOpen}
+        onClose={() => setIsBulkReceiptModalOpen(false)}
+      />
 
     </div>
   );

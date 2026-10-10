@@ -27,6 +27,8 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  Camera,
+  Users,
 } from 'lucide-react';
 
 interface StudentsViewProps {
@@ -48,7 +50,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   onOpenImport,
   onSelectTransaction,
 }) => {
-  const { allStudentSummaries, transactions, currentUser, deleteStudent } = useApp();
+  const { allStudentSummaries, transactions, currentUser, deleteStudent, config } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLevel, setSelectedLevel] = useState('Semua');
@@ -89,7 +91,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       const matchLevel = selectedLevel === 'Semua' || level === selectedLevel;
       const matchStream = selectedStream === 'Semua' || stream === selectedStream;
       const matchClass = selectedClass === 'Semua' || s.className === selectedClass;
-      const matchStatus = selectedStatus === 'Semua' || sum.status === selectedStatus;
+      
+      let matchStatus = true;
+      if (selectedStatus === 'Telah Membayar') {
+        matchStatus = sum.paidCents > 0;
+      } else if (selectedStatus === 'Belum Ada Bayaran') {
+        matchStatus = sum.paidCents === 0;
+      }
 
       return matchSearch && matchLevel && matchStream && matchClass && matchStatus;
     });
@@ -141,10 +149,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <span className="text-xs text-slate-500 font-medium">Berasaskan Pilihan Ibu Bapa</span>
           </div>
           <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-            Pengurusan & Rekod Murid Tahun 3
+            Pengurusan & Rekod Murid
           </h1>
           <p className="text-xs text-slate-500">
-            {allStudentSummaries.length} murid berdaftar • Tetapkan pilihan keperluan ibu bapa, semak baki, dan rekod bayaran
+            {allStudentSummaries.length} murid berdaftar • Rekod bayaran mengikut keperluan yang dipilih oleh ibu bapa
           </p>
         </div>
 
@@ -279,12 +287,12 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             {/* Status Filters */}
             <div className="flex items-center space-x-1">
               <span className="text-[11px] font-bold text-slate-400 mr-1 uppercase">Status:</span>
-              {['Semua', 'Selesai', 'Bayar Sebahagian', 'Belum Bayar'].map((st) => (
+              {['Semua', 'Telah Membayar', 'Belum Ada Bayaran'].map((st) => (
                 <button
                   key={st}
                   type="button"
                   onClick={() => setSelectedStatus(st)}
-                  className={`px-2 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
                     selectedStatus === st
                       ? 'bg-emerald-600 text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -366,6 +374,24 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             const isExpanded = expandedStudentId === student.id;
             const isSelected = selectedStudentIds.includes(student.id);
             const studentTxs = transactions.filter((t) => t.studentId === student.id);
+            const classTeacher = config.classTeachers?.[student.className] || 'Belum Ditetapkan';
+
+            const bal5R = itemBalances.find((b) => b.feeItemName.toLowerCase().includes('5r'));
+            const bal8R = itemBalances.find((b) => b.feeItemName.toLowerCase().includes('8r'));
+            const balPano = itemBalances.find((b) => b.feeItemName.toLowerCase().includes('panorama'));
+
+            const is5RPaid = (bal5R?.paidCents || 0) >= (bal5R?.rateCents || 800);
+            const is8RPaid = (bal8R?.paidCents || 0) >= (bal8R?.rateCents || 2000);
+            const isPanoPaid = (balPano?.paidCents || 0) >= (balPano?.rateCents || 800);
+
+            const photoItems = itemBalances.filter((b) => {
+              const name = b.feeItemName.toLowerCase();
+              return name.includes('gambar') || name.includes('5r') || name.includes('8r') || name.includes('panorama');
+            });
+            const schoolNeedsItems = itemBalances.filter((b) => {
+              const name = b.feeItemName.toLowerCase();
+              return !(name.includes('gambar') || name.includes('5r') || name.includes('8r') || name.includes('panorama'));
+            });
 
             const toggleStudentSelect = () => {
               setSelectedStudentIds((prev) =>
@@ -402,7 +428,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                       )}
                     </button>
 
-                    <div className="space-y-1 flex-1">
+                    <div className="space-y-1.5 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-extrabold text-sm sm:text-base text-slate-900">
                           {student.name}
@@ -411,15 +437,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                           {student.className}
                         </span>
                         <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                            status === 'Selesai'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : status === 'Bayar Sebahagian'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-red-100 text-red-800'
+                          className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                            paidCents > 0
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
                           }`}
                         >
-                          {status}
+                          {paidCents > 0 ? `Telah Bayar (${formatRM(paidCents)})` : 'Belum Ada Bayaran'}
                         </span>
                       </div>
 
@@ -440,6 +464,73 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                             <span className="font-mono text-slate-700">{student.parentPhone}</span>
                           </div>
                         )}
+                        <div className="flex items-center space-x-1 text-slate-700 font-medium bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                          <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="text-slate-400 text-[11px]">Guru Kelas:</span>
+                          <span className="font-bold text-slate-800 text-[11px]">{classTeacher}</span>
+                        </div>
+                      </div>
+
+                      {/* Dedicated Ruang Tick / Pilihan Jenis Gambar */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] font-extrabold uppercase text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                          <Camera className="w-3 h-3 text-indigo-600" />
+                          <span>Pilihan Gambar:</span>
+                        </span>
+
+                        {/* 5R */}
+                        {is5RPaid ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckSquare className="w-3 h-3 text-emerald-600" />
+                            <span>5R Lunas ({formatRM(bal5R?.rateCents || 800)})</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-500 transition cursor-pointer shadow-2xs"
+                            title="Klik untuk rekod bayaran Gambar 5R"
+                          >
+                            <Square className="w-3 h-3 text-slate-400" />
+                            <span>Tick 5R ({formatRM(bal5R?.rateCents || 800)})</span>
+                          </button>
+                        )}
+
+                        {/* 8R */}
+                        {is8RPaid ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
+                            <CheckSquare className="w-3 h-3 text-indigo-600" />
+                            <span>8R Lunas ({formatRM(bal8R?.rateCents || 2000)})</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-300 hover:border-indigo-500 transition cursor-pointer shadow-2xs"
+                            title="Klik untuk rekod bayaran Gambar 8R"
+                          >
+                            <Square className="w-3 h-3 text-slate-400" />
+                            <span>Tick 8R ({formatRM(bal8R?.rateCents || 2000)})</span>
+                          </button>
+                        )}
+
+                        {/* Panorama */}
+                        {isPanoPaid ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            <CheckSquare className="w-3 h-3 text-amber-600" />
+                            <span>Pano Lunas ({formatRM(balPano?.rateCents || 800)})</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-300 hover:border-amber-500 transition cursor-pointer shadow-2xs"
+                            title="Klik untuk rekod bayaran Gambar Panorama"
+                          >
+                            <Square className="w-3 h-3 text-slate-400" />
+                            <span>Tick Pano ({formatRM(balPano?.rateCents || 800)})</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -447,28 +538,36 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   {/* Middle: Financials */}
                   <div className="flex items-center space-x-4 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-5 text-xs">
                     <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Telah Dibayar</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Jumlah Dibayar</span>
                       <span className="text-sm font-black font-mono text-emerald-700">{formatRM(paidCents)}</span>
                     </div>
                     <div className="border-l border-slate-100 pl-4">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Baki Perlu</span>
-                      <span className={`text-sm font-black font-mono ${balanceCents === 0 ? 'text-slate-400' : 'text-amber-800'}`}>
-                        {formatRM(balanceCents)}
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Rekod Resit</span>
+                      <span className="text-xs font-semibold text-slate-700">
+                        {studentTxs.length > 0 ? `${studentTxs.length} resit sah` : 'Tiada rekod'}
                       </span>
                     </div>
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex items-center space-x-2 pt-2 md:pt-0 justify-end">
-                    {balanceCents > 0 && (
-                      <button
-                        onClick={() => onOpenPaymentForStudent(student.id)}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer flex items-center space-x-1"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        <span>Bayar</span>
-                      </button>
-                    )}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2 md:pt-0 justify-end">
+                    <button
+                      onClick={() => onOpenPaymentForStudent(student.id)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer flex items-center space-x-1"
+                      title="Rekod bayaran penuh atau sebahagian untuk murid ini"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>+ Bayaran</span>
+                    </button>
+
+                    <button
+                      onClick={() => onOpenPaymentForStudent(student.id)}
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                      title="Rekod penerimaan bayaran gambar (5R, 8R, Panorama)"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Bayar Gambar</span>
+                    </button>
 
                     <button
                       onClick={() => onOpenOptOutModal(student)}
@@ -505,17 +604,69 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
                 </div>
 
-                {/* Expanded Details: 11 Items Status & Transaction History */}
+                {/* Expanded Details: Separated Photo Items & School Needs */}
                 {isExpanded && (
                   <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5 space-y-4 animate-in fade-in duration-150">
                     
-                    {/* Item by item grid */}
+                    {/* Photo Items Section */}
+                    {photoItems.length > 0 && (
+                      <div className="bg-white p-3.5 rounded-xl border border-indigo-200/80 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center space-x-1.5">
+                            <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Pilihan & Bayaran Gambar Kelas (5R, 8R, Panorama):</span>
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            className="text-[11px] font-bold text-indigo-700 hover:text-indigo-800 underline cursor-pointer"
+                          >
+                            + Rekod Bayaran Gambar
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {photoItems.map((it) => (
+                            <div
+                              key={it.feeItemId}
+                              className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                                it.isPaid
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                                  : it.paidCents > 0
+                                  ? 'bg-amber-50 border-amber-200 text-amber-950'
+                                  : 'bg-slate-50 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div>
+                                <span className="font-extrabold block">{it.feeItemName}</span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  Kadar: {formatRM(it.rateCents)}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                {it.isPaid ? (
+                                  <span className="font-extrabold text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                    Lunas ({formatRM(it.paidCents)})
+                                  </span>
+                                ) : (
+                                  <span className="font-bold text-[10px] text-amber-800 font-mono">
+                                    Baki: {formatRM(it.remainingCents)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* School Needs Items Section */}
                     <div>
                       <h4 className="text-xs font-bold text-slate-800 mb-2 uppercase tracking-wider">
-                        Status Baki Mengikut 11 Perkara Keperluan:
+                        Status Keperluan Persekolahan Lain ({schoolNeedsItems.length} Butiran):
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                        {itemBalances.map((it) => (
+                        {schoolNeedsItems.map((it) => (
                           <div
                             key={it.feeItemId}
                             className={`p-2 rounded-lg border text-xs flex items-center justify-between ${
@@ -585,8 +736,21 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex items-center space-x-3">
+                              <div className="flex flex-wrap items-center space-x-2 sm:space-x-3">
                                 <span className="font-mono font-bold text-slate-900">{formatRM(tx.totalAmountCents)}</span>
+                                {tx.changeReturnedCents !== undefined && tx.changeReturnedCents > 0 && (
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                      tx.changeReturnedStatus === 'Belum Dipulangkan'
+                                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                        : 'bg-emerald-50 text-emerald-800'
+                                    }`}
+                                  >
+                                    {tx.changeReturnedStatus === 'Belum Dipulangkan'
+                                      ? `⏳ Baki Tertunggak: ${formatRM(tx.changeReturnedCents)}`
+                                      : `Baki Pulang: ${formatRM(tx.changeReturnedCents)}`}
+                                  </span>
+                                )}
                                 <span
                                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                     tx.status === 'Dibatalkan' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'

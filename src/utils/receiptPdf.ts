@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import JSZip from 'jszip';
 import { Transaction, SchoolConfig } from '../types';
 import { formatRM } from './currency';
 
@@ -8,6 +9,170 @@ export interface ReceiptPdfOptions {
   isReprint?: boolean;
   cumulativePaidCents: number;
   overallBalanceCents: number;
+  layout?: 'single_page' | 'two_pages';
+}
+
+/**
+ * Renders an official single-page combined receipt directly on the provided jsPDF document.
+ */
+export function renderSinglePageCombinedOnDoc(
+  doc: jsPDF,
+  {
+    transaction,
+    config,
+    isReprint = false,
+    cumulativePaidCents,
+    overallBalanceCents,
+  }: ReceiptPdfOptions
+): void {
+  const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+  const marginX = 12;
+  const contentWidth = pageWidth - marginX * 2; // 186mm
+
+  // Top half: Salinan Guru / Sekolah
+  renderReceiptHalf(doc, {
+    copyTitle: 'SALINAN GURU / REKOD SEKOLAH',
+    startY: 6,
+    transaction,
+    config,
+    isReprint: isReprint || transaction.printCount > 1,
+    cumulativePaidCents,
+    overallBalanceCents,
+    marginX,
+    contentWidth,
+  });
+
+  // Middle cutting divider (at Y = 144mm)
+  const dividerY = 144;
+  doc.setDrawColor(148, 163, 184); // slate-400
+  doc.setLineWidth(0.35);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(marginX, dividerY, marginX + contentWidth, dividerY);
+  doc.setLineDashPattern([], 0);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    '✂  - - - - - - - - - - - - - -  KERATAN SALINAN GURU (ATAS) & SALINAN IBU BAPA (BAWAH)  - - - - - - - - - - - - - -  ✂',
+    pageWidth / 2,
+    dividerY - 1,
+    { align: 'center' }
+  );
+
+  // Bottom half: Salinan Ibu Bapa / Penjaga
+  renderReceiptHalf(doc, {
+    copyTitle: 'SALINAN IBU BAPA / PENJAGA',
+    startY: 149,
+    transaction,
+    config,
+    isReprint: isReprint || transaction.printCount > 1,
+    cumulativePaidCents,
+    overallBalanceCents,
+    marginX,
+    contentWidth,
+  });
+}
+
+/**
+ * Generates an official SINGLE-PAGE (1 Halaman A4 Portrait) PDF receipt
+ * containing BOTH:
+ * - Upper Half: SALINAN GURU / SEKOLAH
+ * - Divider: Garisan Keratan Gunting Putus-putus
+ * - Lower Half: SALINAN IBU BAPA / PENJAGA
+ * This satisfies: "SEDIAKAN RESIT JUGA DALAM SATU HALAMAN MENDAPATI SALINAN GURU DAN SALINAN IBU BAPA"
+ */
+export function generateSinglePageCombinedPdf(options: ReceiptPdfOptions): jsPDF {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+  renderSinglePageCombinedOnDoc(doc, options);
+  return doc;
+}
+
+export interface BulkReceiptItem {
+  transaction: Transaction;
+  config: SchoolConfig;
+  cumulativePaidCents: number;
+  overallBalanceCents: number;
+}
+
+/**
+ * Generates a single consolidated PDF document containing multiple receipts (1 page per receipt)
+ */
+export function generateBulkReceiptsPdf(
+  items: BulkReceiptItem[],
+  onProgress?: (current: number, total: number) => void
+): jsPDF {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  items.forEach((item, index) => {
+    if (index > 0) {
+      doc.addPage('a4', 'portrait');
+    }
+    renderSinglePageCombinedOnDoc(doc, {
+      transaction: item.transaction,
+      config: item.config,
+      cumulativePaidCents: item.cumulativePaidCents,
+      overallBalanceCents: item.overallBalanceCents,
+    });
+    if (onProgress) {
+      onProgress(index + 1, items.length);
+    }
+  });
+
+  return doc;
+}
+
+/**
+ * Generates a ZIP archive containing individual PDF receipts for each student
+ */
+export async function generateBulkReceiptsZip(
+  items: BulkReceiptItem[],
+  onProgress?: (current: number, total: number) => void
+): Promise<Blob> {
+  const zip = new JSZip();
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const doc = generateSinglePageCombinedPdf({
+      transaction: item.transaction,
+      config: item.config,
+      cumulativePaidCents: item.cumulativePaidCents,
+      overallBalanceCents: item.overallBalanceCents,
+    });
+    const pdfBlob = doc.output('blob');
+    const safeStudentName = item.transaction.studentName.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const safeReceiptNum = item.transaction.receiptNumber.replace(/\//g, '_');
+    const filename = `${safeReceiptNum}_${safeStudentName}.pdf`;
+    zip.file(filename, pdfBlob);
+
+    if (onProgress) {
+      onProgress(i + 1, items.length);
+    }
+  }
+
+  return await zip.generateAsync({ type: 'blob' });
+}
+
+/**
+ * Browser download helper for Blobs
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**
@@ -15,13 +180,19 @@ export interface ReceiptPdfOptions {
  * Page 1: SALINAN IBU BAPA / PENJAGA
  * Page 2: SALINAN REKOD SEKOLAH
  */
-export function generateReceiptPdf({
-  transaction,
-  config,
-  isReprint = false,
-  cumulativePaidCents,
-  overallBalanceCents,
-}: ReceiptPdfOptions): jsPDF {
+export function generateReceiptPdf(options: ReceiptPdfOptions): jsPDF {
+  if (options.layout === 'single_page') {
+    return generateSinglePageCombinedPdf(options);
+  }
+
+  const {
+    transaction,
+    config,
+    isReprint = false,
+    cumulativePaidCents,
+    overallBalanceCents,
+  } = options;
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -129,7 +300,8 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
 
   if (config.logoBase64 && config.logoBase64.startsWith('data:image')) {
     try {
-      doc.addImage(config.logoBase64, 'PNG', marginX, curY, logoBoxWidth, logoBoxHeight);
+      const imgFormat = (config.logoBase64.includes('image/jpeg') || config.logoBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.logoBase64, imgFormat, marginX, curY, logoBoxWidth, logoBoxHeight);
     } catch {
       drawSchoolEmblemPlaceholder(doc, marginX, curY, logoBoxWidth, logoBoxHeight);
     }
@@ -140,26 +312,26 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   const textStartX = marginX + logoBoxWidth + 5;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(15);
   doc.setTextColor(15, 23, 42);
-  doc.text(config.schoolName, textStartX, curY + 6);
+  doc.text(config.schoolName, textStartX, curY + 6.5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`KOD SEKOLAH: ${config.schoolCode}  |  ${config.schoolAddress}`, textStartX, curY + 12);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text('RESIT RASMI PEMBAYARAN KEPERLUAN PERSEKOLAHAN', textStartX, curY + 19);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`KOD SEKOLAH: ${config.schoolCode}  |  ${config.schoolAddress}`, textStartX, curY + 11);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text('RESIT RASMI PEMBAYARAN KEPERLUAN TAHUN 3', textStartX, curY + 18);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Sesi Persekolahan: ${transaction.schoolYear || config.currentSchoolYear}`, textStartX, curY + 23);
+  doc.text(`Sesi Persekolahan: ${transaction.schoolYear || config.currentSchoolYear}`, textStartX, curY + 24.5);
 
-  curY += 27;
+  curY += 28;
 
   // Double divider
   doc.setDrawColor(30, 41, 59);
@@ -171,8 +343,9 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   curY += 5;
 
   // --- Transaction & Student Meta Box ---
+  const classTeacherName = transaction.classTeacherName || config.classTeachers?.[transaction.studentClass] || 'Guru Kelas SK Tudan';
   const metaBoxY = curY;
-  const metaBoxHeight = 26;
+  const metaBoxHeight = 31;
   doc.setFillColor(248, 250, 252);
   doc.rect(marginX, metaBoxY, contentWidth, metaBoxHeight, 'F');
   doc.setDrawColor(203, 213, 225);
@@ -180,82 +353,83 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   doc.rect(marginX, metaBoxY, contentWidth, metaBoxHeight, 'S');
 
   // Left column in Meta Box
-  const col1X = marginX + 3;
-  const col1ValX = col1X + 26;
-  doc.setFontSize(8.5);
+  const col1X = marginX + 3.5;
+  const col1ValX = col1X + 27;
+  doc.setFontSize(9.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('No. Resit', col1X, metaBoxY + 6);
+  doc.text('No. Resit', col1X, metaBoxY + 6.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`: ${transaction.receiptNumber}`, col1ValX, metaBoxY + 6);
+  doc.text(`: ${transaction.receiptNumber}`, col1ValX, metaBoxY + 6.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Nama Murid', col1X, metaBoxY + 12);
+  doc.text('Nama Murid', col1X, metaBoxY + 13);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
   // Truncate long names cleanly
   const truncatedStudent = transaction.studentName.length > 32 
     ? transaction.studentName.substring(0, 30) + '...' 
     : transaction.studentName;
-  doc.text(`: ${truncatedStudent}`, col1ValX, metaBoxY + 12);
+  doc.text(`: ${truncatedStudent}`, col1ValX, metaBoxY + 13);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Kelas & Sesi', col1X, metaBoxY + 18);
+  doc.text('Kelas & Sesi', col1X, metaBoxY + 19.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(`: ${transaction.studentClass} (${transaction.schoolYear})`, col1ValX, metaBoxY + 18);
+  doc.text(`: ${transaction.studentClass} (${transaction.schoolYear})`, col1ValX, metaBoxY + 19.5);
 
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(71, 85, 105);
-  doc.text('Pembayar', col1X, metaBoxY + 23);
-  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(5, 150, 105); // emerald
+  doc.text('Guru Kelas', col1X, metaBoxY + 26);
+  doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`: ${transaction.payerName || '-'}`, col1ValX, metaBoxY + 23);
+  const truncTeacherMeta = classTeacherName.length > 32 ? classTeacherName.substring(0, 30) + '..' : classTeacherName;
+  doc.text(`: ${truncTeacherMeta}`, col1ValX, metaBoxY + 26);
 
   // Right column in Meta Box
   const col2X = marginX + 98;
-  const col2ValX = col2X + 26;
+  const col2ValX = col2X + 28;
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Tarikh & Masa', col2X, metaBoxY + 6);
+  doc.text('Tarikh & Masa', col2X, metaBoxY + 6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(`: ${transaction.timestampMalaysia || transaction.timestamp}`, col2ValX, metaBoxY + 6);
+  doc.text(`: ${transaction.timestampMalaysia || transaction.timestamp}`, col2ValX, metaBoxY + 6.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Kaedah Bayar', col2X, metaBoxY + 12);
+  doc.text('Kaedah Bayar', col2X, metaBoxY + 13);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
   const refText = transaction.referenceNumber ? ` (${transaction.referenceNumber})` : '';
-  doc.text(`: ${transaction.paymentMethod}${refText}`, col2ValX, metaBoxY + 12);
+  doc.text(`: ${transaction.paymentMethod}${refText}`, col2ValX, metaBoxY + 13);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Status Bayaran', col2X, metaBoxY + 18);
+  doc.text('Status Bayaran', col2X, metaBoxY + 19.5);
   if (transaction.status === 'Dibatalkan') {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(220, 38, 38);
-    doc.text(': DIBATALKAN', col2ValX, metaBoxY + 18);
+    doc.text(': DIBATALKAN', col2ValX, metaBoxY + 19.5);
   } else {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(16, 185, 129); // green
-    doc.text(': SAH DITERIMA', col2ValX, metaBoxY + 18);
+    doc.text(': SAH DITERIMA', col2ValX, metaBoxY + 19.5);
   }
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('Diterima Oleh', col2X, metaBoxY + 23);
+  doc.text('Pembayar', col2X, metaBoxY + 26);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(`: ${transaction.recordedBy}`, col2ValX, metaBoxY + 23);
+  doc.text(`: ${transaction.payerName || '-'}`, col2ValX, metaBoxY + 26);
 
-  curY += metaBoxHeight + 4;
+  curY += metaBoxHeight + 5;
 
   // Cancellation notice block if cancelled
   if (transaction.status === 'Dibatalkan' && transaction.cancellationReason) {
@@ -412,27 +586,44 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   doc.setLineWidth(0.2);
   doc.line(sumColLabelX, curY + 9, rightX - 2, curY + 9);
 
-  // 2. Jumlah Terkumpul Telah Dibayar
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Jumlah Terkumpul Telah Dibayar :', sumColLabelX, curY + 14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatRM(cumulativePaidCents), sumColValX, curY + 14, { align: 'right' });
+  if (transaction.changeReturnedCents && transaction.changeReturnedCents > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Wang Tunai Dihulur / Diterima :', sumColLabelX, curY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(formatRM(transaction.amountTenderedCents || transaction.totalAmountCents), sumColValX, curY + 14, { align: 'right' });
 
-  // 3. Baki Keseluruhan Selepas Bayaran
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Baki Keseluruhan Selepas Bayaran :', sumColLabelX, curY + 19.5);
-  doc.setFont('helvetica', 'bold');
-  if (overallBalanceCents === 0) {
-    doc.setTextColor(16, 185, 129);
-    doc.text('RM 0.00 (SELESAI)', sumColValX, curY + 19.5, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(4, 120, 87);
+    doc.text('BAKI DIKEMBALIKAN KEPADA MURID :', sumColLabelX, curY + 19.5);
+    const statusTxt = transaction.changeReturnedStatus === 'Belum Dipulangkan' ? ' (*Belum Serah)' : ' (*Telah Pulang)';
+    doc.text(`${formatRM(transaction.changeReturnedCents)}${statusTxt}`, sumColValX, curY + 19.5, { align: 'right' });
   } else {
-    doc.setTextColor(180, 83, 9);
-    doc.text(formatRM(overallBalanceCents), sumColValX, curY + 19.5, { align: 'right' });
+    // 2. Jumlah Terkumpul Telah Dibayar
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Jumlah Terkumpul Telah Dibayar :', sumColLabelX, curY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(formatRM(cumulativePaidCents), sumColValX, curY + 14, { align: 'right' });
+
+    // 3. Status Bayaran Keperluan
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Status Pembayaran Keperluan :', sumColLabelX, curY + 19.5);
+    doc.setFont('helvetica', 'bold');
+    if (overallBalanceCents === 0) {
+      doc.setTextColor(16, 185, 129);
+      doc.text('SELESAI (PILIHAN IBU BAPA)', sumColValX, curY + 19.5, { align: 'right' });
+    } else {
+      doc.setTextColor(16, 185, 129);
+      doc.text('TELAH DIREKODKAN', sumColValX, curY + 19.5, { align: 'right' });
+    }
   }
 
   curY += summaryBoxHeight + 4;
@@ -444,7 +635,7 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
   doc.text(
-    `* ${config.receiptNote || 'Resit ini merupakan bukti rasmi bagi penerimaan amaun bayaran keperluan persekolahan Tahun 3.'}`,
+    `* ${config.receiptNote || 'Resit ini merupakan bukti rasmi bagi penerimaan amaun bayaran keperluan persekolahan.'}`,
     marginX + 3,
     curY + 4.8
   );
@@ -452,44 +643,57 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   curY += 10;
 
   // --- Signature Block & Footer ---
-  const sigBoxWidth = 75;
-  const leftSigX = marginX + 4;
-  const rightSigX = rightX - sigBoxWidth - 4;
+  const sigBoxWidth = 54;
+  const leftSigX = marginX + 2;
+  const midSigX = marginX + 64;
+  const rightSigX = rightX - sigBoxWidth - 2;
 
-  // Left Sign: Pembayar / Penjaga
+  // 1. Pembayar / Penjaga
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Tandatangan Pembayar / Penjaga:', leftSigX, curY + 4);
-
-  doc.setDrawColor(148, 163, 184);
-  doc.setLineWidth(0.3);
-  doc.line(leftSigX, curY + 22, leftSigX + sigBoxWidth, curY + 22);
-
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Nama: ${transaction.payerName || 'Ibu Bapa / Penjaga'}`, leftSigX, curY + 26);
-  doc.text('Tarikh: ........................................', leftSigX, curY + 30);
-
-  // Right Sign: Guru / Petugas Penerima
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text('Tandatangan & Cop Guru / Petugas:', rightSigX, curY + 4);
-
+  doc.text('Tandatangan Pembayar:', leftSigX, curY + 4);
   doc.setDrawColor(148, 163, 184);
   doc.setLineWidth(0.3);
-  doc.line(rightSigX, curY + 22, rightSigX + sigBoxWidth, curY + 22);
+  doc.line(leftSigX, curY + 20, leftSigX + sigBoxWidth, curY + 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Nama: ${transaction.payerName || 'Ibu Bapa / Penjaga'}`, leftSigX, curY + 24);
+  doc.text('Tarikh: ...................................', leftSigX, curY + 28);
 
+  // 2. Guru Kelas (Disahkan)
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
+  doc.setTextColor(5, 150, 105);
+  doc.text('Tandatangan Guru Kelas:', midSigX, curY + 4);
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.3);
+  doc.line(midSigX, curY + 20, midSigX + sigBoxWidth, curY + 20);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Nama: ${transaction.recordedBy}`, rightSigX, curY + 26);
+  const truncTeacher = classTeacherName.length > 25 ? classTeacherName.substring(0, 23) + '..' : classTeacherName;
+  doc.text(`Nama: ${truncTeacher}`, midSigX, curY + 24);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Jawatan: ${transaction.userRole || 'Guru / Petugas Yuran'}`, rightSigX, curY + 30);
+  doc.text(`Jawatan: Guru Kelas (${transaction.studentClass})`, midSigX, curY + 28);
+
+  // 3. Petugas Penerima
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Tandatangan & Cop Petugas:', rightSigX, curY + 4);
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.3);
+  doc.line(rightSigX, curY + 20, rightSigX + sigBoxWidth, curY + 20);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Nama: ${transaction.recordedBy}`, rightSigX, curY + 24);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Jawatan: ${transaction.userRole || 'Petugas Yuran'}`, rightSigX, curY + 28);
 
   // --- Page Number & Verification Stamp at bottom ---
   const bottomY = 286;
@@ -500,7 +704,8 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text(`Sistem Rekod Yuran SK Tudan • Dijana pada: ${new Date().toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}`, marginX, bottomY);
+  const adminFooterPart = config.adminName ? ` • Pentadbir: ${config.adminName}` : '';
+  doc.text(`Sistem Rekod Yuran SK Tudan${adminFooterPart} • Dijana pada: ${new Date().toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}`, marginX, bottomY);
   doc.setFont('helvetica', 'bold');
   doc.text(`Halaman ${pageNumber} daripada 2 [${copyTitle}]`, rightX, bottomY, { align: 'right' });
 }
@@ -525,5 +730,316 @@ function drawSchoolEmblemPlaceholder(doc: jsPDF, x: number, y: number, w: number
   doc.line(x + 3, y + 15, x + w - 3, y + 15);
 
   doc.setFontSize(5);
-  doc.text('YBA4103', x + w / 2, y + 19, { align: 'center' });
+  doc.text('YBA4111', x + w / 2, y + 19, { align: 'center' });
+}
+
+interface ReceiptHalfContext {
+  copyTitle: string;
+  startY: number;
+  transaction: Transaction;
+  config: SchoolConfig;
+  isReprint: boolean;
+  cumulativePaidCents: number;
+  overallBalanceCents: number;
+  marginX: number;
+  contentWidth: number;
+}
+
+function renderReceiptHalf(doc: jsPDF, ctx: ReceiptHalfContext) {
+  const {
+    copyTitle,
+    startY,
+    transaction,
+    config,
+    isReprint,
+    cumulativePaidCents,
+    overallBalanceCents,
+    marginX,
+    contentWidth,
+  } = ctx;
+
+  const rightX = marginX + contentWidth;
+  let curY = startY;
+
+  // Header border line
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, curY, rightX, curY);
+
+  curY += 3.5;
+
+  // Copy Badge (Header top right)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`[ ${copyTitle} ]`, rightX, curY, { align: 'right' });
+
+  if (isReprint) {
+    doc.setFontSize(7.5);
+    doc.setTextColor(180, 83, 9);
+    doc.text('* CETAK SEMULA *', rightX - 60, curY, { align: 'right' });
+  }
+
+  if (transaction.status === 'Dibatalkan') {
+    doc.setFontSize(8.5);
+    doc.setTextColor(220, 38, 38);
+    doc.text('*** RESIT DIBATALKAN ***', marginX, curY);
+  }
+
+  curY += 2;
+
+  // School Logo / Emblem
+  const logoSize = 13.5;
+  if (config.logoBase64 && config.logoBase64.startsWith('data:image')) {
+    try {
+      const imgFormat = (config.logoBase64.includes('image/jpeg') || config.logoBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.logoBase64, imgFormat, marginX, curY, logoSize, logoSize);
+    } catch {
+      drawSchoolEmblemPlaceholder(doc, marginX, curY, logoSize, logoSize);
+    }
+  } else {
+    drawSchoolEmblemPlaceholder(doc, marginX, curY, logoSize, logoSize);
+  }
+
+  const textStartX = marginX + logoSize + 4;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(config.schoolName, textStartX, curY + 3.8);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`KOD: ${config.schoolCode}  |  ${config.schoolAddress}`, textStartX, curY + 7.6);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('RESIT RASMI PEMBAYARAN KEPERLUAN & GAMBAR KELAS', textStartX, curY + 11.5);
+
+  curY += logoSize + 1.2;
+
+  // Metadata Box (2 columns)
+  const classTeacherName = transaction.classTeacherName || config.classTeachers?.[transaction.studentClass] || 'Guru Kelas SK Tudan';
+  const metaBoxHeight = 18.5;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(marginX, curY, contentWidth, metaBoxHeight, 1.5, 1.5, 'FD');
+
+  const c1X = marginX + 3;
+  const c1ValX = c1X + 19;
+  const c2X = marginX + 96;
+  const c2ValX = c2X + 22;
+
+  doc.setFontSize(7.5);
+
+  // Row 1
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('No. Resit', c1X, curY + 3.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`: ${transaction.receiptNumber}`, c1ValX, curY + 3.8);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Tarikh/Masa', c2X, curY + 3.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`: ${transaction.timestampMalaysia || transaction.timestamp}`, c2ValX, curY + 3.8);
+
+  // Row 2
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Nama Murid', c1X, curY + 7.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  const truncatedStudent =
+    transaction.studentName.length > 36
+      ? transaction.studentName.substring(0, 34) + '...'
+      : transaction.studentName;
+  doc.text(`: ${truncatedStudent}`, c1ValX, curY + 7.8);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Kaedah Bayar', c2X, curY + 7.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(
+    `: ${transaction.paymentMethod}${transaction.referenceNumber ? ` (${transaction.referenceNumber})` : ''}`,
+    c2ValX,
+    curY + 7.8
+  );
+
+  // Row 3
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Kelas & Sesi', c1X, curY + 11.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`: ${transaction.studentClass} (${transaction.schoolYear})`, c1ValX, curY + 11.8);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Pembayar', c2X, curY + 11.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`: ${transaction.payerName || '-'}`, c2ValX, curY + 11.8);
+
+  // Row 4 (Guru Kelas & Penerima)
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(5, 150, 105);
+  doc.text('Guru Kelas', c1X, curY + 15.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  const truncTeacherComb = classTeacherName.length > 34 ? classTeacherName.substring(0, 32) + '..' : classTeacherName;
+  doc.text(`: ${truncTeacherComb}`, c1ValX, curY + 15.8);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Diterima Oleh', c2X, curY + 15.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`: ${transaction.recordedBy}`, c2ValX, curY + 15.8);
+
+  curY += metaBoxHeight + 2;
+
+  // Table Headers
+  const colW = { bil: 8, item: 96, kadar: 27, semasa: 28, baki: 27 };
+  const thY = curY;
+  const thH = 4.8;
+
+  doc.setFillColor(15, 23, 42);
+  doc.rect(marginX, thY, contentWidth, thH, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(255, 255, 255);
+
+  doc.text('Bil', marginX + 2, thY + 3.4);
+  doc.text('Butiran / Perkara Bayaran', marginX + colW.bil + 2, thY + 3.4);
+  doc.text('Kadar (RM)', marginX + colW.bil + colW.item + colW.kadar - 2, thY + 3.4, { align: 'right' });
+  doc.text('Dibayar Semasa (RM)', marginX + colW.bil + colW.item + colW.kadar + colW.semasa - 2, thY + 3.4, { align: 'right' });
+  doc.text('Baki (RM)', rightX - 2, thY + 3.4, { align: 'right' });
+
+  curY += thH;
+
+  // Table Rows (readable height 4.2mm per row)
+  const items = transaction.items || [];
+  const maxDisplayItems = 7;
+  const displayItems = items.slice(0, maxDisplayItems);
+  const remainingCount = items.length - maxDisplayItems;
+
+  displayItems.forEach((it, idx) => {
+    const rowH = 4.2;
+    if (idx % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(marginX, curY, contentWidth, rowH, 'F');
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.8);
+    doc.setTextColor(15, 23, 42);
+
+    doc.text(String(idx + 1), marginX + 2, curY + 3.1);
+    const itemName = it.feeItemName.length > 50 ? it.feeItemName.substring(0, 48) + '..' : it.feeItemName;
+    doc.text(itemName, marginX + colW.bil + 2, curY + 3.1);
+    doc.text(formatRM(it.feeRateCents), marginX + colW.bil + colW.item + colW.kadar - 2, curY + 3.1, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatRM(it.currentPaymentCents), marginX + colW.bil + colW.item + colW.kadar + colW.semasa - 2, curY + 3.1, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatRM(it.remainingCentsAfter), rightX - 2, curY + 3.1, { align: 'right' });
+
+    curY += rowH;
+  });
+
+  if (remainingCount > 0) {
+    const rowH = 3.8;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(marginX, curY, contentWidth, rowH, 'F');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`... serta ${remainingCount} butiran bayaran lain (rujuk rekod penuh)`, marginX + 10, curY + 2.8);
+    curY += rowH;
+  }
+
+  // Total Row
+  const totalRowH = 5.2;
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.4);
+  doc.rect(marginX, curY, contentWidth, totalRowH, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('JUMLAH BAYARAN RESIT INI', marginX + 3, curY + 3.6);
+
+  doc.setTextColor(4, 120, 87); // bold emerald green
+  doc.text(formatRM(transaction.totalAmountCents), marginX + colW.bil + colW.item + colW.kadar + colW.semasa - 2, curY + 3.6, { align: 'right' });
+
+  doc.setTextColor(4, 120, 87);
+  doc.setFontSize(7.5);
+  doc.text(`Terkumpul: ${formatRM(cumulativePaidCents)}`, rightX - 2, curY + 3.6, { align: 'right' });
+
+  curY += totalRowH;
+
+  if (transaction.changeReturnedCents && transaction.changeReturnedCents > 0) {
+    const changeRowH = 4.5;
+    doc.setFillColor(236, 253, 245);
+    doc.setDrawColor(167, 243, 208);
+    doc.setLineWidth(0.35);
+    doc.rect(marginX, curY, contentWidth, changeRowH, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    const tenderPart = transaction.amountTenderedCents ? `Wang Diterima: ${formatRM(transaction.amountTenderedCents)}  |  ` : '';
+    doc.text(`${tenderPart}BAKI DIKEMBALIKAN KEPADA MURID:`, marginX + 3, curY + 3.2);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(4, 120, 87);
+    const stPart = transaction.changeReturnedStatus === 'Belum Dipulangkan' ? ' (*Belum Serah)' : ' (*Telah Pulang)';
+    doc.text(`${formatRM(transaction.changeReturnedCents)}${stPart}`, rightX - 2, curY + 3.2, { align: 'right' });
+
+    curY += changeRowH + 1.5;
+  } else {
+    curY += 2;
+  }
+
+  // Signatures (Compact 3 columns)
+  const sigW = 54;
+  const s1X = marginX + 2;
+  const sMidX = marginX + 64;
+  const s2X = rightX - sigW - 2;
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('* Resit rasmi cetakan komputer SK Tudan. Sah sebagai bukti penerimaan rasmi.', marginX, curY + 2.5);
+
+  // Left signature (Pembayar)
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.35);
+  doc.line(s1X, curY + 9.5, s1X + sigW, curY + 9.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Tandatangan Pembayar: ${transaction.payerName || 'Ibu Bapa / Penjaga'}`, s1X, curY + 12.5);
+
+  // Center signature (Guru Kelas)
+  doc.line(sMidX, curY + 9.5, sMidX + sigW, curY + 9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87);
+  doc.text(`Guru Kelas: ${truncTeacherComb}`, sMidX, curY + 12.5);
+
+  // Right signature (Penerima)
+  doc.line(s2X, curY + 9.5, s2X + sigW, curY + 9.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Tandatangan & Cop: ${transaction.recordedBy}`, s2X, curY + 12.5);
 }

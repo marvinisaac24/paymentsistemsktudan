@@ -1,6 +1,6 @@
 {
   "name": "Sistem Yuran SK Tudan",
-  "description": "Sistem Rekod Pembayaran Yuran dan Keperluan Tahun 3 SK Tudan",
+  "description": "Sistem Rekod Pembayaran Yuran dan Keperluan Persekolahan SK Tudan",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

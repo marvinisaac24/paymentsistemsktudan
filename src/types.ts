@@ -50,22 +50,36 @@ export interface Transaction {
   recordedBy: string;
   userRole: 'Pentadbir' | 'Guru/Petugas';
   notes?: string;
+  amountTenderedCents?: number; // Jumlah wang tunai diterima/dihulur oleh murid/ibu bapa
+  changeReturnedCents?: number; // Baki wang yang perlu dikembalikan kepada murid
+  changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki'; // Status pemulangan baki kepada murid
   status: 'Sah' | 'Dibatalkan';
   cancellationReason?: string;
   cancelledBy?: string;
   cancelledAt?: string;
   printCount: number;
+  classTeacherName?: string;
 }
 
 export interface AuditLog {
   id: string;
   timestamp: string;
   timestampMalaysia: string;
-  action: 'TAMBAH_BAYARAN' | 'BATAL_BAYARAN' | 'TAMBAH_MURID' | 'KEMASKINI_MURID' | 'IMPORT_MURID' | 'KEMASKINI_KADAR' | 'LOG_MASUK' | 'KEMASKINI_TETAPAN' | 'KEMASKINI_PILIHAN_ITEM' | 'PADAM_MURID' | 'PADAM_MURID_PUKAL';
+  action: 'TAMBAH_BAYARAN' | 'BATAL_BAYARAN' | 'PADAM_BAYARAN' | 'KEMASKINI_BAYARAN' | 'TAMBAH_MURID' | 'KEMASKINI_MURID' | 'IMPORT_MURID' | 'KEMASKINI_KADAR' | 'LOG_MASUK' | 'KEMASKINI_TETAPAN' | 'KEMASKINI_PILIHAN_ITEM' | 'PADAM_MURID' | 'PADAM_MURID_PUKAL';
   performedBy: string;
   role: string;
   details: string;
   targetId?: string;
+}
+
+export interface AdminOfficer {
+  id: string;
+  name: string;
+  designation: string; // e.g. 'Guru Besar'
+  role: UserRole;
+  phone?: string;
+  email?: string;
+  isPrimary?: boolean;
 }
 
 export interface SchoolConfig {
@@ -76,6 +90,11 @@ export interface SchoolConfig {
   currentSchoolYear: string;
   logoBase64?: string;
   receiptNote: string;
+  classTeachers?: Record<string, string>; // e.g. { "3 ARIF": "Puan Siti Mariam binti Ahmad" }
+  adminName?: string; // Nama Pentadbir Utama dimasukkan secara manual (cth: LIM AI GIOK)
+  adminTitle?: string; // Jawatan Pentadbir (cth: Guru Besar)
+  headmasterName?: string; // Nama Guru Besar / Pengetua (cth: LIM AI GIOK)
+  adminList?: AdminOfficer[]; // Senarai nama pentadbir sekolah yang dimasukkan secara manual
 }
 
 export type UserRole = 'Pentadbir' | 'Guru/Petugas';

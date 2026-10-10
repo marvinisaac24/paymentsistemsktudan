@@ -8,8 +8,10 @@ import { ImportStudentsModal } from './components/ImportStudentsModal';
 import { CancelTransactionModal } from './components/CancelTransactionModal';
 import { StudentOptOutModal } from './components/StudentOptOutModal';
 import { BulkDeleteStudentsModal } from './components/BulkDeleteStudentsModal';
+import { EditTransactionModal } from './components/EditTransactionModal';
 import { DashboardView } from './views/DashboardView';
 import { StudentsView } from './views/StudentsView';
+import { ClassPhotosView } from './views/ClassPhotosView';
 import { TransactionsView } from './views/TransactionsView';
 import { ReportsView } from './views/ReportsView';
 import { SettingsView } from './views/SettingsView';
@@ -23,6 +25,7 @@ const MainContent: React.FC = () => {
 
   // Modals state
   const [selectedTransactionForReceipt, setSelectedTransactionForReceipt] = useState<Transaction | null>(null);
+  const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<Transaction | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentStudentId, setPaymentStudentId] = useState<string | null>(null);
 
@@ -77,12 +80,12 @@ const MainContent: React.FC = () => {
 
           <div className="flex items-center space-x-2">
             <span className="text-[11px] text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/80 font-mono">
-              Resit PDF Tepat 2 Halaman A4
+              Resit 1 Halaman (Salinan Guru & Ibu Bapa)
             </span>
             <button
               onClick={() => {
                 // Open first pre-tested transaction (Muhammad Danial)
-                const first = transactions.find((t) => t.receiptNumber === 'SKT/T3/2026/0001');
+                const first = transactions.find((t) => t.receiptNumber === 'SKT/2026/0001') || transactions[0];
                 if (first) setSelectedTransactionForReceipt(first);
               }}
               className="text-[11px] text-white underline hover:text-emerald-300 transition cursor-pointer"
@@ -116,11 +119,21 @@ const MainContent: React.FC = () => {
           />
         )}
 
+        {currentTab === 'gambar-kelas' && (
+          <ClassPhotosView
+            onOpenPaymentForStudent={(id) => handleOpenPayment(id)}
+            onSelectTransaction={(tx) => setSelectedTransactionForReceipt(tx)}
+            onOpenEditTransaction={(tx) => setSelectedTransactionForEdit(tx)}
+            onOpenCancelModal={(tx) => setCancelModalTransaction(tx)}
+          />
+        )}
+
         {currentTab === 'transactions' && (
           <TransactionsView
             onSelectTransaction={(tx) => setSelectedTransactionForReceipt(tx)}
             onOpenCancelModal={(tx) => setCancelModalTransaction(tx)}
             onOpenNewPayment={() => handleOpenPayment()}
+            onOpenEditTransaction={(tx) => setSelectedTransactionForEdit(tx)}
           />
         )}
 
@@ -141,7 +154,7 @@ const MainContent: React.FC = () => {
           </div>
 
           <p className="text-[11px] text-slate-400">
-            Sistem Rekod Pembayaran Yuran & Keperluan Tahun 3 • Pengiraan Sen Tepat • Waktu Malaysia (MYT)
+            Sistem Rekod Pembayaran Yuran & Keperluan Persekolahan • Pengiraan Sen Tepat • Waktu Malaysia (MYT)
           </p>
         </div>
       </footer>
@@ -150,6 +163,25 @@ const MainContent: React.FC = () => {
       <ReceiptModal
         transaction={selectedTransactionForReceipt}
         onClose={() => setSelectedTransactionForReceipt(null)}
+        onEditTransaction={(tx) => setSelectedTransactionForEdit(tx)}
+        onOpenCancelModal={(tx) => {
+          setSelectedTransactionForReceipt(null);
+          setCancelModalTransaction(tx);
+        }}
+      />
+
+      <EditTransactionModal
+        key={selectedTransactionForEdit?.id || 'none'}
+        isOpen={!!selectedTransactionForEdit}
+        transaction={selectedTransactionForEdit}
+        onClose={() => setSelectedTransactionForEdit(null)}
+        onSuccess={(updatedTx) => {
+          setSelectedTransactionForReceipt(updatedTx);
+        }}
+        onOpenCancelModal={(tx) => {
+          setSelectedTransactionForEdit(null);
+          setCancelModalTransaction(tx);
+        }}
       />
 
       <PaymentModal

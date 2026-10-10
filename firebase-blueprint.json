@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "Config": {
+      "title": "Config",
+      "description": "School configuration including school code and administrator details",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string" },
+        "schoolCode": { "type": "string" },
+        "schoolAddress": { "type": "string" },
+        "title": { "type": "string" },
+        "currentSchoolYear": { "type": "string" },
+        "receiptNote": { "type": "string" },
+        "adminName": { "type": "string" },
+        "adminTitle": { "type": "string" },
+        "headmasterName": { "type": "string" }
+      }
+    },
+    "FeeItem": {
+      "title": "FeeItem",
+      "description": "School fee or photo fee item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "amountCents": { "type": "number" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "name", "amountCents"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record in the school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "myKid": { "type": "string" },
+        "className": { "type": "string" },
+        "gender": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "className"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Payment receipt transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "className": { "type": "string" },
+        "totalAmountCents": { "type": "number" },
+        "status": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "date": { "type": "string" },
+        "recordedBy": { "type": "string" }
+      },
+      "required": ["id", "receiptNumber", "studentId", "totalAmountCents", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System action audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "user": { "type": "string" }
+      },
+      "required": ["id", "action", "timestamp", "user"]
+    },
+    "SystemState": {
+      "title": "SystemState",
+      "description": "Global synchronized application state document for SK Tudan YBA4111",
+      "type": "object",
+      "properties": {
+        "schoolCode": { "type": "string" },
+        "lastUpdated": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/system/{systemId}": {
+      "schema": "SystemState",
+      "description": "System state synchronization and heartbeat"
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "School configuration parameters"
+    },
+    "/feeItems/{feeItemId}": {
+      "schema": "FeeItem",
+      "description": "Fee and photo item catalog"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "School student records"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Payment transactions and receipts"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit trail entries"
+    }
+  }
+}

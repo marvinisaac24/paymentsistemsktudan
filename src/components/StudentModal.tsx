@@ -124,7 +124,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({ student, isOpen, onC
           <div className="flex items-center space-x-2">
             {student ? <UserCheck className="w-5 h-5 text-emerald-400" /> : <UserPlus className="w-5 h-5 text-emerald-400" />}
             <h3 className="text-base font-bold text-white">
-              {student ? 'Kemas Kini Maklumat Murid' : 'Daftar Murid Baharu Tahun 3'}
+              {student ? 'Kemas Kini Maklumat Murid' : 'Daftar Murid Baharu'}
             </h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer">
@@ -165,7 +165,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({ student, isOpen, onC
                 onChange={(e) => setClassName(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
               >
-                <optgroup label="Tahun 3 (Fokus Utama)">
+                <optgroup label="Tahun 3">
                   <option value="3 ARIF">3 ARIF</option>
                   <option value="3 BESTARI">3 BESTARI</option>
                   <option value="3 CEKAL">3 CEKAL</option>

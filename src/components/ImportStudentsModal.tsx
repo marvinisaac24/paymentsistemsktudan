@@ -117,7 +117,7 @@ Daphnie Mujan,1 FLEKSIBEL,191219-13-9900,Mujan Anak Peter,016-9900112,2026`;
         <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-2">
             <FileUp className="w-5 h-5 text-emerald-400" />
-            <h3 className="text-base font-bold text-white">Import Senarai Murid Tahun 3</h3>
+            <h3 className="text-base font-bold text-white">Import Senarai Murid</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer">
             <X className="w-5 h-5" />

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   School,
@@ -13,6 +13,8 @@ import {
   ChevronDown,
   Menu,
   X,
+  Camera,
+  UserCog,
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -27,16 +29,21 @@ export const Navbar: React.FC<NavbarProps> = ({
   setCurrentTab,
   onOpenNewPayment,
 }) => {
-  const { config, currentUser, setCurrentUser } = useApp();
+  const { config, currentUser, setCurrentUser, isRealtimeConnected } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
-  const sampleUsers: { name: string; role: UserRole }[] = [
-    { name: 'Encik Abdul Rahman (PK HEM)', role: 'Pentadbir' },
-    { name: 'Cikgu Noraini binti Daud', role: 'Guru/Petugas' },
-    { name: 'Cikgu Mohd Hafiz bin Salleh', role: 'Guru/Petugas' },
-    { name: 'Puan Siti Mariam (Guru Kelas 3A)', role: 'Guru/Petugas' },
-  ];
+  // Administrator: Ditetapkan secara khusus di bawah LIM AI GIOK (Guru Besar)
+  const availableUsers: { name: string; role: UserRole }[] = useMemo(() => {
+    const adminName = config.adminName || 'LIM AI GIOK';
+    const adminTitle = config.adminTitle || 'Guru Besar';
+    return [
+      {
+        name: `${adminName} (${adminTitle})`,
+        role: 'Pentadbir',
+      },
+    ];
+  }, [config.adminName, config.adminTitle]);
 
   const handleSelectUser = (u: { name: string; role: UserRole }) => {
     setCurrentUser(u);
@@ -46,11 +53,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Papan Pemuka', icon: LayoutDashboard },
     { id: 'students', label: 'Senarai Murid', icon: Users },
+    { id: 'gambar-kelas', label: 'Gambar Kelas', icon: Camera },
     { id: 'transactions', label: 'Sejarah Resit', icon: Receipt },
     { id: 'reports', label: 'Laporan & Eksport', icon: FileSpreadsheet },
     ...(currentUser.role === 'Pentadbir'
       ? [
-          { id: 'settings', label: 'Kadar & Tetapan', icon: Settings },
+          { id: 'settings', label: 'Tetapan & Guru Kelas', icon: Settings },
           { id: 'audit', label: 'Jejak Audit', icon: ShieldCheck },
         ]
       : []),
@@ -80,7 +88,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {config.schoolName}
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium hidden sm:inline-block">
-                  Tahun 3 ({config.currentSchoolYear})
+                  Sesi {config.currentSchoolYear}
+                </span>
+                <span className="inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-medium">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isRealtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className="hidden xs:inline">Segerak</span> Masa Nyata
                 </span>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block truncate max-w-xs md:max-w-md">
@@ -129,32 +141,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                   </div>
 
-                  <div className="p-1">
-                    <p className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                      Tukar Profil Pengguna:
-                    </p>
-                    {sampleUsers.map((u, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleSelectUser(u)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
-                          currentUser.name === u.name
-                            ? 'bg-emerald-50 text-emerald-900 font-semibold'
-                            : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span className="truncate pr-2">{u.name}</span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                            u.role === 'Pentadbir'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {u.role}
-                        </span>
-                      </button>
-                    ))}
+                  <div className="p-2.5">
+                    <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-amber-950">
+                        <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Pentadbir Tunggal Sistem</span>
+                      </div>
+                      <p className="text-[11px] text-amber-900 mt-1.5 leading-relaxed">
+                        Sistem kewangan SK Tudan diuruskan sepenuhnya di bawah <strong>{config.adminName || 'LIM AI GIOK'} (Guru Besar)</strong> tanpa pentadbir lain.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="px-3 pt-2 pb-1 border-t border-slate-100 text-[11px] text-slate-500">

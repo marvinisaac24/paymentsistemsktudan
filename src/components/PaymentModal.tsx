@@ -14,6 +14,11 @@ import {
   Phone,
   FileText,
   Search,
+  Camera,
+  CheckSquare,
+  Coins,
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 
 interface PaymentModalProps {
@@ -38,6 +43,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Tunai');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  // Ruang Wang Tunai Diterima & Baki Perlu Dikembalikan Kepada Murid
+  const [amountTenderedInput, setAmountTenderedInput] = useState<string>('');
+  const [isChangeReturned, setIsChangeReturned] = useState<boolean>(true);
 
   // Map of feeItemId -> currentPaymentInput (string for smooth typing)
   const [itemInputs, setItemInputs] = useState<Record<string, string>>({});
@@ -64,16 +73,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     return getStudentSummary(selectedStudentId);
   }, [selectedStudentId, getStudentSummary]);
 
+  const photoBalances = useMemo(() => {
+    if (!currentSummary) return [];
+    return currentSummary.itemBalances.filter((it) => {
+      const name = it.feeItemName.toLowerCase();
+      return name.includes('gambar') || name.includes('5r') || name.includes('8r') || name.includes('panorama');
+    });
+  }, [currentSummary]);
+
+  const otherBalances = useMemo(() => {
+    if (!currentSummary) return [];
+    return currentSummary.itemBalances.filter((it) => {
+      const name = it.feeItemName.toLowerCase();
+      return !(name.includes('gambar') || name.includes('5r') || name.includes('8r') || name.includes('panorama'));
+    });
+  }, [currentSummary]);
+
   useEffect(() => {
     if (currentSummary) {
       setPayerName(currentSummary.student.parentName || '');
       setPayerPhone(currentSummary.student.parentPhone || '');
       setItemInputs({});
+      setAmountTenderedInput('');
+      setIsChangeReturned(true);
       setErrorMsg('');
     }
   }, [selectedStudentId]);
-
-  if (!isOpen) return null;
 
   // Filter students for search dropdown
   const filteredStudents = students.filter((s) => {
@@ -121,6 +146,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setErrorMsg('');
   };
 
+  // Quick Action: Bayar Gambar Sahaja (5R / 8R / Panorama)
+  const handlePayPhotosOnly = () => {
+    if (!currentSummary) return;
+    const newInputs: Record<string, string> = { ...itemInputs };
+    currentSummary.itemBalances.forEach((it) => {
+      const isPhoto =
+        it.feeItemName.toLowerCase().includes('gambar') ||
+        it.feeItemName.toLowerCase().includes('5r') ||
+        it.feeItemName.toLowerCase().includes('8r') ||
+        it.feeItemName.toLowerCase().includes('panorama');
+      if (isPhoto && it.remainingCents > 0) {
+        newInputs[it.feeItemId] = (it.remainingCents / 100).toFixed(2);
+      }
+    });
+    setItemInputs(newInputs);
+    setErrorMsg('');
+  };
+
   // Calculate live totals
   let totalCurrentPaymentCents = 0;
   const validationErrors: string[] = [];
@@ -146,6 +189,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     ? Math.max(0, currentSummary.balanceCents - totalCurrentPaymentCents)
     : 0;
 
+  // Live Cash Tendered and Change Returned Calculations (Ruang Baki Bayaran Perlu Dikembalikan Kepada Murid)
+  const effectiveTenderedCents =
+    paymentMethod !== 'Tunai'
+      ? totalCurrentPaymentCents
+      : !amountTenderedInput || amountTenderedInput.trim() === ''
+      ? totalCurrentPaymentCents
+      : rmToCents(amountTenderedInput);
+
+  const changeReturnedCents =
+    paymentMethod !== 'Tunai'
+      ? 0
+      : Math.max(0, effectiveTenderedCents - totalCurrentPaymentCents);
+
+  const isUnderpaid =
+    paymentMethod === 'Tunai' &&
+    amountTenderedInput.trim() !== '' &&
+    effectiveTenderedCents < totalCurrentPaymentCents;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentSummary) return;
@@ -162,6 +223,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
     if (paymentMethod === 'Pindahan Bank' && !referenceNumber.trim()) {
       setErrorMsg('Sila masukkan nombor rujukan bagi bayaran Pindahan Bank.');
+      return;
+    }
+
+    if (paymentMethod === 'Tunai' && isUnderpaid) {
+      setErrorMsg(
+        `Wang tunai diterima (RM${(effectiveTenderedCents / 100).toFixed(2)}) kurang sebanyak RM${(
+          (totalCurrentPaymentCents - effectiveTenderedCents) /
+          100
+        ).toFixed(2)} daripada jumlah bayaran resit ini.`
+      );
       return;
     }
 
@@ -188,6 +259,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         paymentMethod,
         referenceNumber: referenceNumber.trim(),
         notes: notes.trim(),
+        amountTenderedCents: effectiveTenderedCents,
+        changeReturnedCents: changeReturnedCents,
+        changeReturnedStatus:
+          changeReturnedCents > 0
+            ? isChangeReturned
+              ? 'Sudah Dipulangkan'
+              : 'Belum Dipulangkan'
+            : 'Tiada Baki',
       });
 
       if (!result.success || !result.transaction) {
@@ -204,6 +283,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
@@ -252,7 +333,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Pilih Murid Tahun 3:
+                  Pilih Murid:
                 </label>
                 <div className="relative w-full sm:w-80">
                   <select
@@ -320,22 +401,158 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {/* Fee Items Allocation Table */}
           <div>
             {/* Optional Items Notice */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-start space-x-2 text-xs text-amber-900">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-3 flex items-start space-x-2 text-xs text-emerald-900">
+              <AlertCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Keperluan Bukan Wajib: </span>
-                Semua butiran keperluan Tahun 3 adalah pilihan bergantung kepada persetujuan ibu bapa / penjaga. Rekodkan bayaran bagi butiran yang dipersetujui sahaja. Butiran yang sudah dimiliki boleh ditandakan sebagai <em>Sedia Ada</em>.
+                <span className="font-bold">Bayaran Mengikut Keperluan: </span>
+                Semua butiran bayaran bergantung kepada keperluan yang hendak dibayar oleh ibu bapa / penjaga. Tiada paksaan bayaran penuh. Rekodkan bayaran bagi butiran yang dipersetujui sahaja.
               </div>
             </div>
+
+            {/* DEDICATED SECTION: RUANG TICK JENIS GAMBAR DIBAYAR OLEH MURID */}
+            {photoBalances.length > 0 && (
+              <div className="bg-gradient-to-r from-indigo-50/90 via-emerald-50/80 to-purple-50/90 border-2 border-indigo-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5 mb-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100 pb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                      <Camera className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-indigo-950 flex items-center space-x-2">
+                        <span>Ruang Tick Pilihan Jenis Gambar Murid</span>
+                        <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full uppercase font-extrabold tracking-wider">
+                          📸 Pilihan Gambar
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-indigo-900 mt-0.5">
+                        Tandakan (tick) jenis gambar yang hendak dibayar oleh murid mengikut persetujuan ibu bapa:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={handlePayPhotosOnly}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer shadow-2xs"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5" />
+                      <span>Tick Semua Gambar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cleared = { ...itemInputs };
+                        photoBalances.forEach((p) => {
+                          delete cleared[p.feeItemId];
+                        });
+                        setItemInputs(cleared);
+                      }}
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 transition cursor-pointer"
+                    >
+                      Nyah-tick Gambar
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3 Interactive Cards for 5R, 8R, Panorama */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {photoBalances.map((item) => {
+                    const inputVal = itemInputs[item.feeItemId] || '';
+                    const payCents = rmToCents(inputVal);
+                    const isChecked = payCents > 0;
+                    const isFullPaid = item.remainingCents === 0;
+
+                    const is5R = item.feeItemName.toLowerCase().includes('5r');
+                    const is8R = item.feeItemName.toLowerCase().includes('8r');
+
+                    const badgeColor = is5R
+                      ? 'bg-emerald-600'
+                      : is8R
+                      ? 'bg-indigo-600'
+                      : 'bg-amber-600';
+
+                    const cardBorder = isChecked
+                      ? is5R
+                        ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-400'
+                        : is8R
+                        ? 'border-indigo-500 bg-indigo-50/70 ring-2 ring-indigo-400'
+                        : 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-400'
+                      : 'border-slate-200 bg-white hover:border-slate-300';
+
+                    return (
+                      <div
+                        key={item.feeItemId}
+                        className={`p-3.5 rounded-xl border transition shadow-xs flex flex-col justify-between ${cardBorder}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-start space-x-2.5 cursor-pointer flex-1">
+                            <input
+                              type="checkbox"
+                              disabled={isFullPaid}
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handlePayItemFull(item.feeItemId, item.remainingCents);
+                                } else {
+                                  handleInputChange(item.feeItemId, '');
+                                }
+                              }}
+                              className="mt-0.5 w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
+                            />
+                            <div>
+                              <span className="font-extrabold text-xs text-slate-900 block leading-tight">
+                                {item.feeItemName}
+                              </span>
+                              <span className="text-[11px] font-mono font-bold text-slate-500 block mt-0.5">
+                                Kadar: {formatRM(item.rateCents)}
+                              </span>
+                            </div>
+                          </label>
+
+                          <div className="text-right shrink-0">
+                            {isFullPaid ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Lunas
+                              </span>
+                            ) : item.paidCents > 0 ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
+                                Baki {formatRM(item.remainingCents)}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                                Belum Bayar
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-bold text-slate-700">Amaun Bayar:</span>
+                          <div className="relative w-28">
+                            <span className="absolute left-2.5 top-1 text-slate-400 font-mono text-[11px]">RM</span>
+                            <input
+                              type="text"
+                              disabled={isFullPaid}
+                              value={inputVal}
+                              placeholder="0.00"
+                              onChange={(e) => handleInputChange(item.feeItemId, e.target.value)}
+                              className="w-full pl-8 pr-2.5 py-1 text-right font-mono font-black text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:outline-hidden disabled:bg-slate-100"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
               <div className="flex items-center space-x-2">
                 <h3 className="text-sm font-bold text-slate-800">
-                  Peruntukan Bayaran Mengikut Perkara (11 Perkara Pilihan):
+                  Semua Perkara & Keperluan Persekolahan:
                 </h3>
-                <span className="text-xs text-slate-500">
-                  (Jumlah Keseluruhan Jika Ambil Semua: <strong>RM133.00</strong>)
-                </span>
               </div>
 
               {/* Quick Actions */}
@@ -346,31 +563,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded-md border border-emerald-200 transition cursor-pointer flex items-center space-x-1"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Bayar Penuh Baki Dipilih</span>
+                  <span>Tick Semua Perkara</span>
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!currentSummary) return;
-                    // Mark all currently unpaid items as opt-out (Sedia Ada / Tidak Perlu)
-                    const unpaidIds = currentSummary.itemBalances
-                      .filter((b) => b.remainingCents > 0)
-                      .map((b) => b.feeItemId);
-                    const currentOptOuts = currentSummary.student.optOutItemIds || [];
-                    const merged = Array.from(new Set([...currentOptOuts, ...unpaidIds]));
-                    await updateStudentOptOutItems(currentSummary.student.id, merged);
-                  }}
-                  className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium px-2 py-1 rounded-md border border-amber-200 transition cursor-pointer"
-                  title="Tandakan semua butiran yang belum dibayar sebagai sedia ada / tidak diperlukan oleh ibu bapa"
+                  onClick={handlePayPhotosOnly}
+                  className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold px-2.5 py-1 rounded-md border border-indigo-200 transition cursor-pointer flex items-center space-x-1"
+                  title="Tick dan masukkan amaun bagi Gambar 5R, Gambar 8R, dan Gambar Panorama"
                 >
-                  Tanda Baki Sedia Ada
+                  <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Tick Gambar Sahaja (5R, 8R, Panorama)</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleClearInputs}
                   className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2 py-1 rounded-md border border-slate-300 transition cursor-pointer"
                 >
-                  Kosongkan
+                  Nyah-tick Semua
                 </button>
               </div>
             </div>
@@ -380,7 +589,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3 w-10 text-center">Bil.</th>
+                      <th className="py-2.5 px-2 w-12 text-center bg-emerald-50/80 text-emerald-900">Tick</th>
+                      <th className="py-2.5 px-2 w-8 text-center">Bil.</th>
                       <th className="py-2.5 px-3">Perkara / Butiran</th>
                       <th className="py-2.5 px-3 text-right">Kadar (RM)</th>
                       <th className="py-2.5 px-3 text-right">Telah Bayar</th>
@@ -397,6 +607,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       const payCents = rmToCents(inputVal);
                       const isOver = payCents > item.remainingCents;
                       const isFull = item.remainingCents === 0;
+                      const isChecked = payCents > 0;
 
                       return (
                         <tr
@@ -404,12 +615,28 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                           className={`${
                             isFull
                               ? 'bg-slate-50/60 opacity-75'
-                              : payCents > 0
-                              ? 'bg-emerald-50/40'
+                              : isChecked
+                              ? 'bg-emerald-50/50'
                               : 'hover:bg-slate-50'
                           }`}
                         >
-                          <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
+                          <td className="py-2 px-2 text-center bg-emerald-50/30">
+                            <input
+                              type="checkbox"
+                              disabled={isFull}
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handlePayItemFull(item.feeItemId, item.remainingCents);
+                                } else {
+                                  handleInputChange(item.feeItemId, '');
+                                }
+                              }}
+                              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={isFull ? 'Perkara ini telah lunas' : 'Tick untuk pilih bayaran perkara ini'}
+                            />
+                          </td>
+                          <td className="py-2 px-2 text-center font-mono text-slate-500">{idx + 1}</td>
                           <td className="py-2 px-3 font-semibold text-slate-800">
                             {item.feeItemName}
                             {item.isOptedOut && (
@@ -562,23 +789,232 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           </div>
 
+          {/* DEDICATED SECTION: RUANG BAKI BAYARAN PERLU DIKEMBALIKAN KEPADA MURID */}
+          {paymentMethod === 'Tunai' && (
+            <div className="bg-gradient-to-r from-amber-50/80 via-emerald-50/80 to-teal-50/80 border-2 border-emerald-300 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200 pb-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-xs">
+                    <Coins className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 flex items-center space-x-2">
+                      <span>Ruang Baki Bayaran Perlu Dikembalikan Kepada Murid</span>
+                      <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full uppercase font-extrabold tracking-wider">
+                        💵 Tunai & Baki
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Sediakan dan kira baki wang tunai yang perlu diserahkan atau dikembalikan semula kepada murid / ibu bapa.
+                    </p>
+                  </div>
+                </div>
+
+                {changeReturnedCents > 0 && (
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[11px] font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg">
+                      Baki: RM {(changeReturnedCents / 100).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Input Wang Tunai Diterima */}
+                <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>Jumlah Wang Tunai Diterima / Dihulur (RM):</span>
+                    <span className="text-[10px] text-slate-500 font-normal">
+                      Perlu dibayar: <strong className="text-emerald-700">{formatRM(totalCurrentPaymentCents)}</strong>
+                    </span>
+                  </label>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold text-sm">RM</span>
+                    <input
+                      type="text"
+                      value={amountTenderedInput}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.]/g, '');
+                        setAmountTenderedInput(val);
+                        setErrorMsg('');
+                      }}
+                      placeholder={(totalCurrentPaymentCents / 100).toFixed(2)}
+                      className={`w-full pl-11 pr-3 py-2 text-base font-mono font-black rounded-lg border focus:outline-hidden transition ${
+                        isUnderpaid
+                          ? 'border-red-400 bg-red-50 text-red-900 focus:ring-2 focus:ring-red-400'
+                          : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Quick Cash Buttons */}
+                  <div className="pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                      Pilihan Pantas Wang Dihulur:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setAmountTenderedInput((totalCurrentPaymentCents / 100).toFixed(2))}
+                        className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-md text-xs font-bold transition cursor-pointer border border-emerald-300"
+                        title="Bayar jumlah genap tepat seperti dalam resit"
+                      >
+                        Genap (RM{(totalCurrentPaymentCents / 100).toFixed(2)})
+                      </button>
+                      {[10, 20, 50, 100].map((note) => {
+                        const noteCents = note * 100;
+                        return (
+                          <button
+                            key={note}
+                            type="button"
+                            onClick={() => setAmountTenderedInput(note.toFixed(2))}
+                            className={`px-2 py-1 rounded-md text-xs font-bold transition cursor-pointer border ${
+                              noteCents >= totalCurrentPaymentCents
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-400 border-slate-200'
+                            }`}
+                          >
+                            RM{note}
+                          </button>
+                        );
+                      })}
+                      {amountTenderedInput && (
+                        <button
+                          type="button"
+                          onClick={() => setAmountTenderedInput('')}
+                          className="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                        >
+                          Kosongkan
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status & Pengiraan Baki Perlu Dikembalikan */}
+                <div className="flex flex-col justify-between space-y-3 bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+                      <span>Amaun Bayaran Resit:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatRM(totalCurrentPaymentCents)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-600 mb-2">
+                      <span>Wang Tunai Diterima:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatRM(effectiveTenderedCents)}</span>
+                    </div>
+
+                    {/* Result Card */}
+                    {changeReturnedCents > 0 ? (
+                      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-xl p-3 shadow-xs">
+                        <span className="text-[10px] uppercase tracking-wider text-emerald-200 font-extrabold block">
+                          💰 Baki Wang Perlu Dikembalikan Kepada Murid:
+                        </span>
+                        <div className="flex items-baseline space-x-2 mt-0.5">
+                          <span className="text-2xl font-black font-mono tracking-tight text-white">
+                            RM {(changeReturnedCents / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : isUnderpaid ? (
+                      <div className="bg-red-50 border border-red-200 text-red-900 rounded-xl p-3">
+                        <span className="text-[11px] font-bold block">
+                          ⚠️ Wang Diterima Kurang:
+                        </span>
+                        <span className="text-xs text-red-700">
+                          Wang dihulur kurang sebanyak <strong>RM {((totalCurrentPaymentCents - effectiveTenderedCents) / 100).toFixed(2)}</strong>.
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-xl p-2.5 text-center">
+                        <span className="text-xs font-semibold text-slate-600">
+                          ✓ Bayaran Genap — Tiada baki wang perlu dikembalikan.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Toggle Status Penyerahan Baki */}
+                  {changeReturnedCents > 0 && (
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <span className="text-[11px] font-bold text-slate-700 block">
+                        Status Penyerahan Baki Kepada Murid:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <label
+                          className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer transition select-none ${
+                            isChangeReturned
+                              ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="changeReturnStatus"
+                            checked={isChangeReturned}
+                            onChange={() => setIsChangeReturned(true)}
+                            className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-[11px]">✓ Telah Diserahkan Serta-merta</span>
+                        </label>
+
+                        <label
+                          className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer transition select-none ${
+                            !isChangeReturned
+                              ? 'bg-amber-50 border-amber-400 text-amber-950 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="changeReturnStatus"
+                            checked={!isChangeReturned}
+                            onChange={() => setIsChangeReturned(false)}
+                            className="w-4 h-4 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="text-[11px]">⏳ Belum Serah (Baki Tertunggak)</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Live Summary Bar */}
           <div className="bg-slate-900 text-white rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-4">
               <div>
                 <span className="text-[11px] text-slate-400 block uppercase font-bold tracking-wider">
-                  Jumlah Bayaran Resit Ini:
+                  Jumlah Bayaran Resit:
                 </span>
                 <span className="text-2xl font-black text-emerald-400 font-mono">
                   {formatRM(totalCurrentPaymentCents)}
                 </span>
               </div>
+
+              {paymentMethod === 'Tunai' && changeReturnedCents > 0 && (
+                <div className="border-l border-slate-700 pl-4">
+                  <span className="text-[11px] text-amber-300 block uppercase font-bold tracking-wider flex items-center space-x-1">
+                    <Coins className="w-3.5 h-3.5" />
+                    <span>Baki Perlu Dikembalikan:</span>
+                  </span>
+                  <span className="text-xl font-black font-mono text-amber-400">
+                    RM {(changeReturnedCents / 100).toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">
+                    {isChangeReturned ? '✓ Dipulangkan' : '⏳ Baki Tertunggak'}
+                  </span>
+                </div>
+              )}
+
               <div className="border-l border-slate-700 pl-4">
                 <span className="text-[11px] text-slate-400 block uppercase font-bold tracking-wider">
-                  Baki Selepas Bayaran Ini:
+                  Jumlah Telah Dibayar (Kumulatif):
                 </span>
-                <span className={`text-base font-bold font-mono ${remainingAfterPaymentCents === 0 ? 'text-emerald-300' : 'text-amber-400'}`}>
-                  {remainingAfterPaymentCents === 0 ? 'RM 0.00 (SELESAI)' : formatRM(remainingAfterPaymentCents)}
+                <span className="text-base font-bold font-mono text-emerald-300">
+                  {formatRM((currentSummary?.paidCents || 0) + totalCurrentPaymentCents)}
                 </span>
               </div>
             </div>

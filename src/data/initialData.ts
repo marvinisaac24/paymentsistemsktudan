@@ -1,12 +1,78 @@
 import { FeeItem, SchoolConfig, Student, Transaction, AuditLog } from '../types';
 
+export const INITIAL_CLASS_TEACHERS: Record<string, string> = {
+  // Prasekolah
+  'PRASEKOLAH ARIF': 'Puan Dayang Norhafizah binti Abang',
+  'PRASEKOLAH BESTARI': 'Cikgu Rosnah binti Karim',
+  'PRASEKOLAH CEKAL': 'Puan Siti Hajar binti Ibrahim',
+  'PRASEKOLAH DINAMIK': 'Ustazah Fatimah binti Ahmad',
+  'PRASEKOLAH EFISIEN': 'Cikgu Wong Mee Ling',
+  'PRASEKOLAH FLEKSIBEL': 'Puan Azimah binti Yusof',
+  // Tahun 1
+  '1 ARIF': 'Ustazah Nurul Ain binti Zakaria',
+  '1 BESTARI': 'Cikgu Ahmad Taufiq bin Yusof',
+  '1 CEKAL': 'Puan Haslinda binti Ramli',
+  '1 DINAMIK': 'Encik Mohd Razali bin Kassim',
+  '1 EFISIEN': 'Puan Chan Sook Fun',
+  '1 FLEKSIBEL': 'Cikgu Syarifah Nurul Huda',
+  // Tahun 2
+  '2 ARIF': 'Encik Mohd Ridzuan bin Omar',
+  '2 BESTARI': 'Puan Faridah binti Hassan',
+  '2 CEKAL': 'Cikgu Lim Siew Mei',
+  '2 DINAMIK': 'Ustaz Khairul Anuar bin Salleh',
+  '2 EFISIEN': 'Puan Salmah binti Mahmud',
+  '2 FLEKSIBEL': 'Cikgu Tan Bee Leng',
+  // Tahun 3
+  '3 ARIF': 'Puan Siti Mariam binti Ahmad',
+  '3 BESTARI': 'Cikgu Mohd Hafiz bin Salleh',
+  '3 CEKAL': 'Ustaz Azman bin Mahmud',
+  '3 DINAMIK': 'Puan Zulaikha binti Othman',
+  '3 EFISIEN': 'Cikgu Nurul Hidayah binti Ali',
+  '3 FLEKSIBEL': 'Encik David anak Raymond',
+  // Tahun 4
+  '4 ARIF': 'Puan Wong Siew Ling',
+  '4 BESTARI': 'Encik Zainal bin Abidin',
+  '4 CEKAL': 'Cikgu Noraini binti Daud',
+  '4 DINAMIK': 'Ustazah Rohana binti Ismail',
+  '4 EFISIEN': 'Puan Jennyfer Ting',
+  '4 FLEKSIBEL': 'Encik Awangku Faizal bin Pg Ahmad',
+  // Tahun 5
+  '5 ARIF': 'Puan Kamariah binti Sulaiman',
+  '5 BESTARI': 'Encik Iskandar bin Dzulkarnain',
+  '5 CEKAL': 'Cikgu Mariam binti Abdullah',
+  '5 DINAMIK': 'Ustaz Wan Muhd Faiz bin Wan Hassan',
+  '5 EFISIEN': 'Puan Lee Pei Shan',
+  '5 FLEKSIBEL': 'Cikgu Nor Asyikin binti Ramlee',
+  // Tahun 6
+  '6 ARIF': 'Cikgu Dayangku Mastura binti Pg Salleh',
+  '6 BESTARI': 'Encik Tan Kah Peng',
+  '6 CEKAL': 'Puan Zaiton binti Kassim',
+  '6 DINAMIK': 'Ustaz Mohd Syukri bin Dahlan',
+  '6 EFISIEN': 'Puan Grace Ting Kah Ling',
+  '6 FLEKSIBEL': 'Encik Shahrul Nizam bin Mat',
+};
+
 export const INITIAL_CONFIG: SchoolConfig = {
   schoolName: 'SK TUDAN',
-  schoolCode: 'YBA4103',
+  schoolCode: 'YBA4111',
   schoolAddress: 'Jalan Tudan, 98000 Miri, Sarawak',
-  title: 'SK TUDAN – RESIT BAYARAN KEPERLUAN TAHUN 3',
+  title: 'SK TUDAN – RESIT BAYARAN KEPERLUAN PERSEKOLAHAN',
   currentSchoolYear: '2026',
   receiptNote: 'Semua butiran keperluan adalah pilihan (bukan wajib) bergantung kepada persetujuan ibu bapa. Resit ini adalah bukti rasmi penerimaan bagi butiran yang dipilih.',
+  classTeachers: INITIAL_CLASS_TEACHERS,
+  adminName: 'LIM AI GIOK',
+  adminTitle: 'Guru Besar',
+  headmasterName: 'LIM AI GIOK',
+  adminList: [
+    {
+      id: 'adm_1',
+      name: 'LIM AI GIOK',
+      designation: 'Guru Besar',
+      role: 'Pentadbir',
+      phone: '019-8834111',
+      isPrimary: true,
+    },
+  ],
 };
 
 export const INITIAL_FEE_ITEMS: FeeItem[] = [
@@ -21,6 +87,9 @@ export const INITIAL_FEE_ITEMS: FeeItem[] = [
   { id: 'item_9', code: 'JLG', name: 'Jalur Gemilang', amountCents: 800, order: 9, active: true },
   { id: 'item_10', code: 'BTS', name: 'Buku Tulis (1 Set)', amountCents: 2900, order: 10, active: true },
   { id: 'item_11', code: 'PBG', name: 'Sumbangan PIBG', amountCents: 2000, order: 11, active: true },
+  { id: 'item_g5r', code: 'G5R', name: 'Gambar 5R', amountCents: 800, order: 12, active: true },
+  { id: 'item_g8r', code: 'G8R', name: 'Gambar 8R', amountCents: 2000, order: 13, active: true },
+  { id: 'item_gpn', code: 'GPN', name: 'Gambar Panorama', amountCents: 800, order: 14, active: true },
 ];
 
 export const INITIAL_STUDENTS: Student[] = [
@@ -111,7 +180,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   // 1. Bayaran Penuh RM133.00
   {
     id: 'tx_001',
-    receiptNumber: 'SKT/T3/2026/0001',
+    receiptNumber: 'SKT/2026/0001',
     studentId: 'std_001',
     studentName: 'Muhammad Danial bin Radzi',
     studentClass: '3 ARIF',
@@ -136,16 +205,16 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     ],
     paymentMethod: 'Tunai',
     referenceNumber: '',
-    recordedBy: 'Cikgu Noraini binti Daud',
-    userRole: 'Guru/Petugas',
-    notes: 'Bayaran penuh awal sesi persekolahan Tahun 3.',
+    recordedBy: 'LIM AI GIOK (Guru Besar)',
+    userRole: 'Pentadbir',
+    notes: 'Bayaran keperluan awal sesi persekolahan.',
     status: 'Sah',
     printCount: 1,
   },
   // 2. Bayaran Sebahagian (Nur Aisyah Humaira)
   {
     id: 'tx_002',
-    receiptNumber: 'SKT/T3/2026/0002',
+    receiptNumber: 'SKT/2026/0002',
     studentId: 'std_002',
     studentName: 'Nur Aisyah Humaira binti Zamri',
     studentClass: '3 BESTARI',
@@ -162,8 +231,8 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     ],
     paymentMethod: 'Pindahan Bank',
     referenceNumber: 'MBB2026011689234',
-    recordedBy: 'Cikgu Noraini binti Daud',
-    userRole: 'Guru/Petugas',
+    recordedBy: 'LIM AI GIOK (Guru Besar)',
+    userRole: 'Pentadbir',
     notes: 'Bayaran keutamaan Tag Nama, Yuran Cetakan dan PIBG.',
     status: 'Sah',
     printCount: 1,
@@ -171,7 +240,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   // 3a. Dua Bayaran Ansuran Murid Sama - Ansuran 1 (Ahmad Faris)
   {
     id: 'tx_003',
-    receiptNumber: 'SKT/T3/2026/0003',
+    receiptNumber: 'SKT/2026/0003',
     studentId: 'std_003',
     studentName: 'Ahmad Faris bin Zulkifli',
     studentClass: '3 CEKAL',
@@ -189,7 +258,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     ],
     paymentMethod: 'Tunai',
     referenceNumber: '',
-    recordedBy: 'Encik Abdul Rahman (PK HEM)',
+    recordedBy: 'LIM AI GIOK (Guru Besar)',
     userRole: 'Pentadbir',
     notes: 'Ansuran 1: Baju GERKO dibayar RM12.00 daripada kadar RM23.00.',
     status: 'Sah',
@@ -198,7 +267,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   // 3b. Dua Bayaran Ansuran Murid Sama - Ansuran 2 (Ahmad Faris)
   {
     id: 'tx_004',
-    receiptNumber: 'SKT/T3/2026/0004',
+    receiptNumber: 'SKT/2026/0004',
     studentId: 'std_003',
     studentName: 'Ahmad Faris bin Zulkifli',
     studentClass: '3 CEKAL',
@@ -216,8 +285,8 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     ],
     paymentMethod: 'Pindahan Bank',
     referenceNumber: 'CIMB202602051187',
-    recordedBy: 'Cikgu Noraini binti Daud',
-    userRole: 'Guru/Petugas',
+    recordedBy: 'LIM AI GIOK (Guru Besar)',
+    userRole: 'Pentadbir',
     notes: 'Ansuran 2: Menyelesaikan baki Baju GERKO (RM11.00) dan Buku Tulis 1 Set (RM29.00).',
     status: 'Sah',
     printCount: 1,
@@ -230,7 +299,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-01-10T08:00:00.000Z',
     timestampMalaysia: '10/01/2026, 04:00:00 PTG',
     action: 'TAMBAH_MURID',
-    performedBy: 'Encik Abdul Rahman (PK HEM)',
+    performedBy: 'LIM AI GIOK (Guru Besar)',
     role: 'Pentadbir',
     details: 'Mendaftar murid baru: Muhammad Danial bin Radzi (3 Amanah)',
     targetId: 'std_001',
@@ -240,9 +309,9 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-01-15T09:30:00.000Z',
     timestampMalaysia: '15/01/2026, 05:30:00 PTG',
     action: 'TAMBAH_BAYARAN',
-    performedBy: 'Cikgu Noraini binti Daud',
-    role: 'Guru/Petugas',
-    details: 'Merekodkan bayaran penuh RM133.00 bagi resit SKT/T3/2026/0001 (Muhammad Danial bin Radzi)',
+    performedBy: 'LIM AI GIOK (Guru Besar)',
+    role: 'Pentadbir',
+    details: 'Merekodkan bayaran penuh RM133.00 bagi resit SKT/2026/0001 (Muhammad Danial bin Radzi)',
     targetId: 'tx_001',
   },
   {
@@ -250,9 +319,9 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-01-16T10:15:00.000Z',
     timestampMalaysia: '16/01/2026, 06:15:00 PTG',
     action: 'TAMBAH_BAYARAN',
-    performedBy: 'Cikgu Noraini binti Daud',
-    role: 'Guru/Petugas',
-    details: 'Merekodkan bayaran sebahagian RM38.00 bagi resit SKT/T3/2026/0002 (Nur Aisyah Humaira binti Zamri)',
+    performedBy: 'LIM AI GIOK (Guru Besar)',
+    role: 'Pentadbir',
+    details: 'Merekodkan bayaran sebahagian RM38.00 bagi resit SKT/2026/0002 (Nur Aisyah Humaira binti Zamri)',
     targetId: 'tx_002',
   },
   {
@@ -260,9 +329,9 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-01-18T11:00:00.000Z',
     timestampMalaysia: '18/01/2026, 07:00:00 PTG',
     action: 'TAMBAH_BAYARAN',
-    performedBy: 'Encik Abdul Rahman (PK HEM)',
+    performedBy: 'LIM AI GIOK (Guru Besar)',
     role: 'Pentadbir',
-    details: 'Merekodkan ansuran 1 RM50.00 bagi resit SKT/T3/2026/0003 (Ahmad Faris bin Zulkifli)',
+    details: 'Merekodkan ansuran 1 RM50.00 bagi resit SKT/2026/0003 (Ahmad Faris bin Zulkifli)',
     targetId: 'tx_003',
   },
   {
@@ -270,9 +339,9 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-02-05T08:45:00.000Z',
     timestampMalaysia: '05/02/2026, 04:45:00 PTG',
     action: 'TAMBAH_BAYARAN',
-    performedBy: 'Cikgu Noraini binti Daud',
-    role: 'Guru/Petugas',
-    details: 'Merekodkan ansuran 2 RM40.00 bagi resit SKT/T3/2026/0004 (Ahmad Faris bin Zulkifli)',
+    performedBy: 'LIM AI GIOK (Guru Besar)',
+    role: 'Pentadbir',
+    details: 'Merekodkan ansuran 2 RM40.00 bagi resit SKT/2026/0004 (Ahmad Faris bin Zulkifli)',
     targetId: 'tx_004',
   },
 ];

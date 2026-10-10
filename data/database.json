@@ -1,11 +1,68 @@
 {
   "config": {
     "schoolName": "SK TUDAN",
-    "schoolCode": "YBA4103",
+    "schoolCode": "YBA4111",
     "schoolAddress": "Jalan Tudan, 98000 Miri, Sarawak",
-    "title": "SK TUDAN – RESIT BAYARAN KEPERLUAN TAHUN 3",
+    "title": "SK TUDAN – RESIT BAYARAN KEPERLUAN PERSEKOLAHAN",
     "currentSchoolYear": "2026",
-    "receiptNote": "Resit ini merupakan bukti rasmi bagi penerimaan amaun bayaran keperluan persekolahan Tahun 3."
+    "receiptNote": "Semua butiran bayaran adalah mengikut keperluan yang dipersetujui dan dipilih oleh ibu bapa / penjaga (tiada paksaan bayaran penuh).",
+    "classTeachers": {
+      "PRASEKOLAH ARIF": "Puan Dayang Norhafizah binti Abang",
+      "PRASEKOLAH BESTARI": "Cikgu Rosnah binti Karim",
+      "PRASEKOLAH CEKAL": "Puan Siti Hajar binti Ibrahim",
+      "PRASEKOLAH DINAMIK": "Ustazah Fatimah binti Ahmad",
+      "PRASEKOLAH EFISIEN": "Cikgu Wong Mee Ling",
+      "PRASEKOLAH FLEKSIBEL": "Puan Azimah binti Yusof",
+      "1 ARIF": "Ustazah Nurul Ain binti Zakaria",
+      "1 BESTARI": "Cikgu Ahmad Taufiq bin Yusof",
+      "1 CEKAL": "Puan Haslinda binti Ramli",
+      "1 DINAMIK": "Encik Mohd Razali bin Kassim",
+      "1 EFISIEN": "Puan Chan Sook Fun",
+      "1 FLEKSIBEL": "Cikgu Syarifah Nurul Huda",
+      "2 ARIF": "Encik Mohd Ridzuan bin Omar",
+      "2 BESTARI": "Puan Faridah binti Hassan",
+      "2 CEKAL": "Cikgu Lim Siew Mei",
+      "2 DINAMIK": "Ustaz Khairul Anuar bin Salleh",
+      "2 EFISIEN": "Puan Salmah binti Mahmud",
+      "2 FLEKSIBEL": "Cikgu Tan Bee Leng",
+      "3 ARIF": "Puan Siti Mariam binti Ahmad",
+      "3 BESTARI": "Cikgu Mohd Hafiz bin Salleh",
+      "3 CEKAL": "Ustaz Azman bin Mahmud",
+      "3 DINAMIK": "Puan Zulaikha binti Othman",
+      "3 EFISIEN": "Cikgu Nurul Hidayah binti Ali",
+      "3 FLEKSIBEL": "Encik David anak Raymond",
+      "4 ARIF": "Puan Wong Siew Ling",
+      "4 BESTARI": "Encik Zainal bin Abidin",
+      "4 CEKAL": "Cikgu Noraini binti Daud",
+      "4 DINAMIK": "Ustazah Rohana binti Ismail",
+      "4 EFISIEN": "Puan Jennyfer Ting",
+      "4 FLEKSIBEL": "Encik Awangku Faizal bin Pg Ahmad",
+      "5 ARIF": "Puan Kamariah binti Sulaiman",
+      "5 BESTARI": "Encik Iskandar bin Dzulkarnain",
+      "5 CEKAL": "Cikgu Mariam binti Abdullah",
+      "5 DINAMIK": "Ustaz Wan Muhd Faiz bin Wan Hassan",
+      "5 EFISIEN": "Puan Lee Pei Shan",
+      "5 FLEKSIBEL": "Cikgu Nor Asyikin binti Ramlee",
+      "6 ARIF": "Cikgu Dayangku Mastura binti Pg Salleh",
+      "6 BESTARI": "Encik Tan Kah Peng",
+      "6 CEKAL": "Puan Zaiton binti Kassim",
+      "6 DINAMIK": "Ustaz Mohd Syukri bin Dahlan",
+      "6 EFISIEN": "Puan Grace Ting Kah Ling",
+      "6 FLEKSIBEL": "Encik Shahrul Nizam bin Mat"
+    },
+    "adminName": "LIM AI GIOK",
+    "adminTitle": "Guru Besar",
+    "headmasterName": "LIM AI GIOK",
+    "adminList": [
+      {
+        "id": "adm_1",
+        "name": "LIM AI GIOK",
+        "designation": "Guru Besar",
+        "role": "Pentadbir",
+        "phone": "019-8834111",
+        "isPrimary": true
+      }
+    ]
   },
   "feeItems": [
     {
@@ -94,6 +151,30 @@
       "name": "Sumbangan PIBG",
       "amountCents": 2000,
       "order": 11,
+      "active": true
+    },
+    {
+      "id": "item_g5r",
+      "code": "G5R",
+      "name": "Gambar 5R",
+      "amountCents": 800,
+      "order": 12,
+      "active": true
+    },
+    {
+      "id": "item_g8r",
+      "code": "G8R",
+      "name": "Gambar 8R",
+      "amountCents": 2000,
+      "order": 13,
+      "active": true
+    },
+    {
+      "id": "item_gpn",
+      "code": "GPN",
+      "name": "Gambar Panorama",
+      "amountCents": 800,
+      "order": 14,
       "active": true
     }
   ],
@@ -14072,7 +14153,7 @@
   "transactions": [
     {
       "id": "tx_001",
-      "receiptNumber": "SKT/T3/2026/0001",
+      "receiptNumber": "SKT/2026/0001",
       "studentId": "std_001",
       "studentName": "Muhammad Danial bin Radzi",
       "studentClass": "3 ARIF",
@@ -14174,15 +14255,15 @@
       ],
       "paymentMethod": "Tunai",
       "referenceNumber": "",
-      "recordedBy": "Cikgu Noraini binti Daud",
-      "userRole": "Guru/Petugas",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
       "notes": "Bayaran penuh awal sesi persekolahan Tahun 3.",
       "status": "Sah",
       "printCount": 2
     },
     {
       "id": "tx_002",
-      "receiptNumber": "SKT/T3/2026/0002",
+      "receiptNumber": "SKT/2026/0002",
       "studentId": "std_002",
       "studentName": "Nur Aisyah Humaira binti Zamri",
       "studentClass": "3 BESTARI",
@@ -14220,15 +14301,15 @@
       ],
       "paymentMethod": "Pindahan Bank",
       "referenceNumber": "MBB2026011689234",
-      "recordedBy": "Cikgu Noraini binti Daud",
-      "userRole": "Guru/Petugas",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
       "notes": "Bayaran keutamaan Tag Nama, Yuran Cetakan dan PIBG.",
       "status": "Sah",
       "printCount": 1
     },
     {
       "id": "tx_003",
-      "receiptNumber": "SKT/T3/2026/0003",
+      "receiptNumber": "SKT/2026/0003",
       "studentId": "std_003",
       "studentName": "Ahmad Faris bin Zulkifli",
       "studentClass": "3 CEKAL",
@@ -14274,7 +14355,7 @@
       ],
       "paymentMethod": "Tunai",
       "referenceNumber": "",
-      "recordedBy": "Encik Abdul Rahman (PK HEM)",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
       "userRole": "Pentadbir",
       "notes": "Ansuran 1: Baju GERKO dibayar RM12.00 daripada kadar RM23.00.",
       "status": "Sah",
@@ -14282,7 +14363,7 @@
     },
     {
       "id": "tx_004",
-      "receiptNumber": "SKT/T3/2026/0004",
+      "receiptNumber": "SKT/2026/0004",
       "studentId": "std_003",
       "studentName": "Ahmad Faris bin Zulkifli",
       "studentClass": "3 CEKAL",
@@ -14312,20 +14393,158 @@
       ],
       "paymentMethod": "Pindahan Bank",
       "referenceNumber": "CIMB202602051187",
-      "recordedBy": "Cikgu Noraini binti Daud",
-      "userRole": "Guru/Petugas",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
       "notes": "Ansuran 2: Menyelesaikan baki Baju GERKO (RM11.00) dan Buku Tulis 1 Set (RM29.00).",
+      "status": "Sah",
+      "printCount": 1
+    },
+    {
+      "id": "tx_1790682044892_ocpms",
+      "receiptNumber": "SKT/2026/0005",
+      "studentId": "std_1790655428439_yge5km",
+      "studentName": "ABDUL ALYAN BIN ABDUL RAHIM",
+      "studentClass": "3 FLEKSIBEL",
+      "schoolYear": "2026",
+      "payerName": "ABDUL RAHIM BIN SUHAILI",
+      "payerPhone": "01110321312",
+      "timestamp": "2026-09-29T11:40:44.885Z",
+      "timestampMalaysia": "29/09/2026, 07:40:44 PTG",
+      "totalAmountCents": 800,
+      "items": [
+        {
+          "feeItemId": "item_g5r",
+          "feeItemName": "Gambar 5R",
+          "feeRateCents": 800,
+          "previouslyPaidCents": 0,
+          "currentPaymentCents": 800,
+          "remainingCentsAfter": 0
+        }
+      ],
+      "paymentMethod": "Tunai",
+      "referenceNumber": "",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
+      "notes": "",
+      "status": "Sah",
+      "printCount": 4
+    },
+    {
+      "id": "tx_1790717915972_pwieu",
+      "receiptNumber": "SKT/2026/0006",
+      "studentId": "std_1790655428440_auyu61",
+      "studentName": "CARLISSA ABEL ANAK MATHEW ALIN",
+      "studentClass": "3 FLEKSIBEL",
+      "schoolYear": "2026",
+      "payerName": "CALIFONIA ANAK GEORGE",
+      "payerPhone": "0134468114",
+      "timestamp": "2026-09-29T21:38:35.961Z",
+      "timestampMalaysia": "30/09/2026, 05:38:35 PG",
+      "totalAmountCents": 800,
+      "items": [
+        {
+          "feeItemId": "item_g5r",
+          "feeItemName": "Gambar 5R",
+          "feeRateCents": 800,
+          "previouslyPaidCents": 0,
+          "currentPaymentCents": 800,
+          "remainingCentsAfter": 0
+        }
+      ],
+      "paymentMethod": "Tunai",
+      "referenceNumber": "",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
+      "notes": "Bayaran gambar kelas: Gambar 5R",
+      "status": "Sah",
+      "printCount": 1
+    },
+    {
+      "id": "tx_1790717932243_swiah",
+      "receiptNumber": "SKT/2026/0007",
+      "studentId": "std_1790655428439_7rkvei",
+      "studentName": "ALKAYLA CHARLOTTE ANAK ABELL",
+      "studentClass": "3 FLEKSIBEL",
+      "schoolYear": "2026",
+      "payerName": "ALEXANDRA ANAK ASSAN",
+      "payerPhone": "01129999622",
+      "timestamp": "2026-09-29T21:38:52.242Z",
+      "timestampMalaysia": "30/09/2026, 05:38:52 PG",
+      "totalAmountCents": 800,
+      "items": [
+        {
+          "feeItemId": "item_g5r",
+          "feeItemName": "Gambar 5R",
+          "feeRateCents": 800,
+          "previouslyPaidCents": 0,
+          "currentPaymentCents": 800,
+          "remainingCentsAfter": 0
+        }
+      ],
+      "paymentMethod": "Tunai",
+      "referenceNumber": "",
+      "recordedBy": "LIM AI GIOK (Guru Besar)",
+      "userRole": "Pentadbir",
+      "notes": "Bayaran gambar kelas: Gambar 5R",
       "status": "Sah",
       "printCount": 1
     }
   ],
   "auditLogs": [
     {
+      "id": "log_1791439552045",
+      "timestamp": "2026-10-08T06:05:51.978Z",
+      "timestampMalaysia": "08/10/2026, 02:05:51 PTG",
+      "action": "KEMASKINI_TETAPAN",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
+      "role": "Pentadbir",
+      "details": "Mengemas kini maklumat konfigurasi sekolah / kadar."
+    },
+    {
+      "id": "log_1790718723283",
+      "timestamp": "2026-09-29T21:52:03.282Z",
+      "timestampMalaysia": "30/09/2026, 05:52:03 PG",
+      "action": "KEMASKINI_TETAPAN",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
+      "role": "Pentadbir",
+      "details": "Membaca fail senarai_guru.csv (.csv) dan berjaya mengekstrak 3 maklumat guru kelas secara automatik."
+    },
+    {
+      "id": "log_1790717932243",
+      "timestamp": "2026-09-29T21:38:52.242Z",
+      "timestampMalaysia": "30/09/2026, 05:38:52 PG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
+      "role": "Pentadbir",
+      "details": "Merekodkan bayaran resit SKT/2026/0007 sebanyak RM8.00 bagi murid ALKAYLA CHARLOTTE ANAK ABELL (3 FLEKSIBEL) melalui kaedah Tunai.",
+      "targetId": "tx_1790717932243_swiah"
+    },
+    {
+      "id": "log_1790717915972",
+      "timestamp": "2026-09-29T21:38:35.961Z",
+      "timestampMalaysia": "30/09/2026, 05:38:35 PG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
+      "role": "Pentadbir",
+      "details": "Merekodkan bayaran resit SKT/2026/0006 sebanyak RM8.00 bagi murid CARLISSA ABEL ANAK MATHEW ALIN (3 FLEKSIBEL) melalui kaedah Tunai.",
+      "targetId": "tx_1790717915972_pwieu"
+    },
+    {
+      "id": "log_1790682044892",
+      "timestamp": "2026-09-29T11:40:44.885Z",
+      "timestampMalaysia": "29/09/2026, 07:40:44 PTG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
+      "role": "Pentadbir",
+      "details": "Merekodkan bayaran resit SKT/2026/0005 sebanyak RM8.00 bagi murid ABDUL ALYAN BIN ABDUL RAHIM (3 FLEKSIBEL) melalui kaedah Tunai.",
+      "targetId": "tx_1790682044892_ocpms"
+    },
+    {
       "id": "log_1790655428704",
       "timestamp": "2026-09-29T04:17:08.341Z",
       "timestampMalaysia": "29/09/2026, 12:17:08 PTG",
       "action": "IMPORT_MURID",
-      "performedBy": "Encik Abdul Rahman (PK HEM)",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "Mengimport 1267 murid baharu (0 dilepaskan kerana pendua/tidak sah)."
     },
@@ -14334,7 +14553,7 @@
       "timestamp": "2026-09-29T04:16:50.998Z",
       "timestampMalaysia": "29/09/2026, 12:16:50 PTG",
       "action": "PADAM_MURID_PUKAL",
-      "performedBy": "Encik Abdul Rahman (PK HEM)",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "MEMADAM 1268 MURID SECARA PUKAL: Dayang Siti Sarah binti Abang Zaidi (3 Amanah), Alvin Lee Zhi Hao (3 Bijak), Christie Anak Ricky (3 Dedikasi), Mohamad Haziq bin Roslan (3 Dedikasi), ADRIANNA BENIN ANAK VELLY (PRASEKOLAH  BESTARI) dan 1263 lagi. Sebab: Pembersihan senarai rekod murid"
     },
@@ -14343,7 +14562,7 @@
       "timestamp": "2026-09-29T04:15:51.536Z",
       "timestampMalaysia": "29/09/2026, 12:15:51 PTG",
       "action": "PADAM_MURID_PUKAL",
-      "performedBy": "Admin",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "MEMADAM 2 MURID SECARA PUKAL: VOX ACACIA ANTIA VIVIAN (FLEKSIBEL), YEREMIA PAUL ANAK AMY (FLEKSIBEL). Sebab: Ujian pemadaman pukal"
     },
@@ -14352,7 +14571,7 @@
       "timestamp": "2026-09-29T04:13:48.093Z",
       "timestampMalaysia": "29/09/2026, 12:13:48 PTG",
       "action": "PADAM_MURID",
-      "performedBy": "Admin",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "Memadam murid: YOHANNA USUN SOFIA (FLEKSIBEL, TAHUN ENAM FLEKSIBEL)",
       "targetId": "std_1790654218313_83ep5k"
@@ -14362,7 +14581,7 @@
       "timestamp": "2026-09-29T03:56:57.962Z",
       "timestampMalaysia": "29/09/2026, 11:56:57 PG",
       "action": "IMPORT_MURID",
-      "performedBy": "Encik Abdul Rahman (PK HEM)",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "Mengimport 1267 murid baharu (0 dilepaskan kerana pendua/tidak sah)."
     },
@@ -14371,7 +14590,7 @@
       "timestamp": "2026-01-10T08:00:00.000Z",
       "timestampMalaysia": "10/01/2026, 04:00:00 PTG",
       "action": "TAMBAH_MURID",
-      "performedBy": "Encik Abdul Rahman (PK HEM)",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
       "details": "Mendaftar murid baru: Muhammad Danial bin Radzi (3 Amanah)",
       "targetId": "std_001"
@@ -14381,9 +14600,9 @@
       "timestamp": "2026-01-15T09:30:00.000Z",
       "timestampMalaysia": "15/01/2026, 05:30:00 PTG",
       "action": "TAMBAH_BAYARAN",
-      "performedBy": "Cikgu Noraini binti Daud",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Guru/Petugas",
-      "details": "Merekodkan bayaran penuh RM133.00 bagi resit SKT/T3/2026/0001 (Muhammad Danial bin Radzi)",
+      "details": "Merekodkan bayaran penuh RM133.00 bagi resit SKT/2026/0001 (Muhammad Danial bin Radzi)",
       "targetId": "tx_001"
     },
     {
@@ -14391,9 +14610,9 @@
       "timestamp": "2026-01-16T10:15:00.000Z",
       "timestampMalaysia": "16/01/2026, 06:15:00 PTG",
       "action": "TAMBAH_BAYARAN",
-      "performedBy": "Cikgu Noraini binti Daud",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Guru/Petugas",
-      "details": "Merekodkan bayaran sebahagian RM38.00 bagi resit SKT/T3/2026/0002 (Nur Aisyah Humaira binti Zamri)",
+      "details": "Merekodkan bayaran sebahagian RM38.00 bagi resit SKT/2026/0002 (Nur Aisyah Humaira binti Zamri)",
       "targetId": "tx_002"
     },
     {
@@ -14401,9 +14620,9 @@
       "timestamp": "2026-01-18T11:00:00.000Z",
       "timestampMalaysia": "18/01/2026, 07:00:00 PTG",
       "action": "TAMBAH_BAYARAN",
-      "performedBy": "Encik Abdul Rahman (PK HEM)",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Pentadbir",
-      "details": "Merekodkan ansuran 1 RM50.00 bagi resit SKT/T3/2026/0003 (Ahmad Faris bin Zulkifli)",
+      "details": "Merekodkan ansuran 1 RM50.00 bagi resit SKT/2026/0003 (Ahmad Faris bin Zulkifli)",
       "targetId": "tx_003"
     },
     {
@@ -14411,11 +14630,11 @@
       "timestamp": "2026-02-05T08:45:00.000Z",
       "timestampMalaysia": "05/02/2026, 04:45:00 PTG",
       "action": "TAMBAH_BAYARAN",
-      "performedBy": "Cikgu Noraini binti Daud",
+      "performedBy": "LIM AI GIOK (Guru Besar)",
       "role": "Guru/Petugas",
-      "details": "Merekodkan ansuran 2 RM40.00 bagi resit SKT/T3/2026/0004 (Ahmad Faris bin Zulkifli)",
+      "details": "Merekodkan ansuran 2 RM40.00 bagi resit SKT/2026/0004 (Ahmad Faris bin Zulkifli)",
       "targetId": "tx_004"
     }
   ],
-  "receiptCounter": 4
+  "receiptCounter": 7
 }

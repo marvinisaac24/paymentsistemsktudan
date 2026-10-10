@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Pillar 1: Default-deny catch-all)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable validation primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Test connection endpoint for initial boot validation
+    match /test/{docId} {
+      allow read, write: if isValidId(docId);
+    }
+
+    // System state synchronization endpoint
+    match /system/{systemId} {
+      allow read: if true;
+      allow write: if isValidId(systemId);
+    }
+
+    // School Configuration (SK TUDAN YBA4111)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isValidId(configId);
+    }
+
+    // Fee and Photo Items
+    match /feeItems/{feeItemId} {
+      allow read: if true;
+      allow write: if isValidId(feeItemId);
+    }
+
+    // Student Registry
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if isValidId(studentId);
+    }
+
+    // Transactions and Receipts
+    match /transactions/{transactionId} {
+      allow read: if true;
+      allow write: if isValidId(transactionId);
+    }
+
+    // Audit Trail: Append-only integrity
+    match /auditLogs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId);
+      allow update, delete: if false;
+    }
+  }
+}

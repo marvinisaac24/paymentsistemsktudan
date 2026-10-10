@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { formatRM } from '../utils/currency';
+import { compareClassNames } from '../utils/classes';
 import {
   Users,
   Wallet,
@@ -14,6 +15,7 @@ import {
   FileSpreadsheet,
   Calendar,
   Layers,
+  Camera,
 } from 'lucide-react';
 import { Transaction } from '../types';
 
@@ -48,7 +50,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       if (item.status === 'Selesai') cur.completed += 1;
       map.set(cls, cur);
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(map.entries()).sort((a, b) => compareClassNames(a[0], b[0]));
   }, [allStudentSummaries]);
 
   // Collection per fee item
@@ -80,6 +82,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const recentTransactions = transactions.slice(0, 5);
 
+  // Photo items total collected
+  const photoItemsSumCents = React.useMemo(() => {
+    const photoIds = new Set(
+      feeItems.filter((f) => f.code.startsWith('G') || f.name.toLowerCase().includes('gambar')).map((f) => f.id)
+    );
+    let sum = 0;
+    for (const t of transactions) {
+      if (t.status === 'Sah') {
+        for (const it of t.items) {
+          if (photoIds.has(it.feeItemId)) {
+            sum += it.currentPaymentCents;
+          }
+        }
+      }
+    }
+    return sum;
+  }, [feeItems, transactions]);
+
+  const paidStudentsCount = React.useMemo(() => {
+    return allStudentSummaries.filter((s) => s.paidCents > 0).length;
+  }, [allStudentSummaries]);
+
+  const unpaidStudentsCount = React.useMemo(() => {
+    return allStudentSummaries.filter((s) => s.paidCents === 0).length;
+  }, [allStudentSummaries]);
+
   return (
     <div className="space-y-6">
       
@@ -91,17 +119,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Sesi Persekolahan {config.currentSchoolYear}
             </span>
             <span className="text-slate-400 text-xs hidden sm:inline">•</span>
-            <span className="text-slate-300 text-xs font-medium">Tahun 3 {config.schoolName}</span>
+            <span className="text-slate-300 text-xs font-medium">{config.schoolName}</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
             Papan Pemuka Kutipan Yuran & Keperluan
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-            Kadar rasmi lengkap: <strong className="text-emerald-400 font-mono">{formatRM(totalItemRateCents)}</strong> seorang murid bagi 11 perkara keperluan Tahun 3.
+            Bayaran adalah mengikut keperluan yang dipilih dan dipersetujui oleh ibu bapa / penjaga (tiada paksaan bayaran penuh).
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => onNavigateToTab('gambar-kelas')}
+            className="px-3.5 py-2.5 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition active:scale-95 cursor-pointer flex items-center space-x-1.5 border border-emerald-500/50"
+          >
+            <Camera className="w-4 h-4 text-emerald-300" />
+            <span>Gambar Kelas</span>
+          </button>
           <button
             onClick={() => onOpenPayment()}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg transition active:scale-95 cursor-pointer flex items-center space-x-2"
@@ -140,71 +175,76 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Total Outstanding Balance */}
-        <div className="col-span-2 sm:col-span-1 lg:col-span-1 bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Jumlah Baki Belum Dikutip</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-black text-amber-800 font-mono">
-              {formatRM(stats.totalPendingCents)}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">Daripada sasaran keseluruhan</p>
-          </div>
-        </div>
-
-        {/* Selesai Membayar */}
+        {/* Murid Telah Membayar */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Murid Selesai</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Telah Bayar</span>
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
-              {stats.completedStudentsCount} <span className="text-xs font-normal text-slate-500">/ {stats.totalStudents}</span>
+              {paidStudentsCount} <span className="text-xs font-normal text-slate-500">/ {stats.totalStudents}</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
               {stats.totalStudents > 0
-                ? `${Math.round((stats.completedStudentsCount / stats.totalStudents) * 100)}% selesai penuh`
+                ? `${Math.round((paidStudentsCount / stats.totalStudents) * 100)}% murid berbayar`
                 : '0%'}
             </p>
           </div>
         </div>
 
-        {/* Bayar Sebahagian */}
+        {/* Belum Ada Bayaran */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Bayar Sebahagian</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-              <Layers className="w-4 h-4" />
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Belum Ada Bayaran</span>
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-blue-800 font-mono">
-              {stats.partialStudentsCount}
+            <div className="text-xl sm:text-2xl font-black text-slate-700 font-mono">
+              {unpaidStudentsCount}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">Termasuk bayaran ansuran</p>
+            <p className="text-[11px] text-slate-500 mt-1">Belum rekod keperluan</p>
           </div>
         </div>
 
-        {/* Belum Bayar */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        {/* Kutipan Gambar Kelas */}
+        <div
+          onClick={() => onNavigateToTab('gambar-kelas')}
+          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-emerald-400 transition cursor-pointer"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Belum Bayar</span>
-            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4" />
+            <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Gambar Kelas</span>
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+              <Camera className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-red-700 font-mono">
-              {stats.unpaidStudentsCount}
+            <div className="text-xl sm:text-2xl font-black text-indigo-900 font-mono">
+              {formatRM(photoItemsSumCents)}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">Belum membuat sebarang bayaran</p>
+            <p className="text-[11px] text-indigo-600 mt-1 font-semibold flex items-center space-x-1">
+              <span>5R, 8R & Panorama →</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Jumlah Murid Berdaftar */}
+        <div className="bg-slate-900 text-white p-4 rounded-xl shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Jumlah Murid</span>
+            <div className="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">
+              {stats.totalStudents} <span className="text-xs font-normal text-slate-400">orang</span>
+            </div>
+            <p className="text-[11px] text-emerald-400 mt-1 font-medium">Pra hingga Tahun 6</p>
           </div>
         </div>
 

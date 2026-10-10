@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { db, testConnection } from '../firebase';
 import {
   FeeItem,
   SchoolConfig,
@@ -28,6 +30,7 @@ interface AppContextType {
   currentUser: CurrentUser;
   setCurrentUser: (user: CurrentUser) => void;
   isLoading: boolean;
+  isRealtimeConnected: boolean;
   refreshData: () => Promise<void>;
   
   // Student Actions
@@ -53,14 +56,45 @@ interface AppContextType {
     paymentMethod: PaymentMethod;
     referenceNumber?: string;
     notes?: string;
+    amountTenderedCents?: number;
+    changeReturnedCents?: number;
+    changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
   }) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>;
   
   cancelTransaction: (id: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+  deleteTransaction: (id: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  updateTransaction: (
+    id: string,
+    updateData: {
+      payerName?: string;
+      payerPhone?: string;
+      paymentMethod?: PaymentMethod;
+      referenceNumber?: string;
+      notes?: string;
+      amountTenderedCents?: number;
+      changeReturnedCents?: number;
+      changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
+      items?: { feeItemId: string; currentPaymentCents: number }[];
+    }
+  ) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>;
+  markChangeReturned: (id: string, status?: 'Sudah Dipulangkan' | 'Belum Dipulangkan') => Promise<{ success: boolean; error?: string }>;
   markReceiptPrinted: (id: string) => Promise<void>;
   
   // Settings Actions
   updateFeeItems: (items: FeeItem[]) => Promise<{ success: boolean; error?: string }>;
   updateConfig: (newConfig: Partial<SchoolConfig>) => Promise<{ success: boolean; error?: string }>;
+  updateClassTeachers: (classTeachers: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
+  parseClassTeachersFile: (
+    fileBase64: string,
+    fileName: string,
+    mimeType: string
+  ) => Promise<{
+    success: boolean;
+    extracted?: { className: string; teacherName: string }[];
+    totalFound?: number;
+    fileName?: string;
+    error?: string;
+  }>;
   
   // Helpers
   getStudentSummary: (studentId: string) => StudentPaymentSummary | null;
@@ -74,7 +108,7 @@ const LOCAL_STORAGE_KEY = 'sk_tudan_yuran_data_v1';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<CurrentUser>({
-    name: 'Encik Abdul Rahman (PK HEM)',
+    name: 'LIM AI GIOK (Guru Besar)',
     role: 'Pentadbir',
   });
 
@@ -84,6 +118,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
+
+  // Sync state data to Firestore to guarantee persistent real-time propagation across teachers
+  const syncToFirestore = async (stateData?: {
+    config?: SchoolConfig;
+    feeItems?: FeeItem[];
+    students?: Student[];
+    transactions?: Transaction[];
+    auditLogs?: AuditLog[];
+  }) => {
+    try {
+      const stateDocRef = doc(db, 'system', 'sk_tudan_state');
+      const payload = stateData || {
+        config,
+        feeItems,
+        students,
+        transactions,
+        auditLogs,
+        lastUpdated: new Date().toISOString(),
+      };
+      await setDoc(stateDocRef, payload, { merge: true });
+      setIsRealtimeConnected(true);
+    } catch {
+      // Offline or network fallback
+    }
+  };
 
   // Load from API with fallback to localStorage
   const loadState = async () => {
@@ -99,6 +159,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
         setIsLoading(false);
+        // Silently sync to Firestore
+        syncToFirestore(data).catch(() => {});
         return;
       }
     } catch {
@@ -123,6 +185,64 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     loadState();
+
+    // Verify Firestore connection
+    testConnection().then((connected) => {
+      if (connected) setIsRealtimeConnected(true);
+    });
+
+    // Firestore Real-Time Listener (onSnapshot): Updates instantly whenever any teacher adds or modifies records
+    let unsubscribeFirestore: (() => void) | null = null;
+    try {
+      const stateDocRef = doc(db, 'system', 'sk_tudan_state');
+      unsubscribeFirestore = onSnapshot(
+        stateDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data) {
+              setIsRealtimeConnected(true);
+              if (data.config) setConfig(data.config as SchoolConfig);
+              if (Array.isArray(data.feeItems)) setFeeItems(data.feeItems as FeeItem[]);
+              if (Array.isArray(data.students)) setStudents(data.students as Student[]);
+              if (Array.isArray(data.transactions)) setTransactions(data.transactions as Transaction[]);
+              if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs as AuditLog[]);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+              } catch {
+                // ignore
+              }
+            }
+          }
+        },
+        (err) => {
+          console.warn('Firestore onSnapshot listener notice:', err.message);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize Firestore onSnapshot listener:', err);
+    }
+
+    // Polling and window focus sync fallback
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadState();
+      }
+    }, 4000);
+
+    const handleFocus = () => {
+      loadState();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      if (unsubscribeFirestore) unsubscribeFirestore();
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   const refreshData = async () => {
@@ -400,6 +520,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     paymentMethod: PaymentMethod;
     referenceNumber?: string;
     notes?: string;
+    amountTenderedCents?: number;
+    changeReturnedCents?: number;
+    changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
   }) => {
     try {
       const res = await fetch('/api/transactions', {
@@ -429,6 +552,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const data = await res.json();
       if (!res.ok) {
         return { success: false, error: data.error || 'Gagal membatalkan transaksi.' };
+      }
+      await refreshData();
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Ralat komunikasi dengan server.' };
+    }
+  };
+
+  // 5b. Delete Transaction (Padam Pembayaran Tersalah Daftar)
+  const deleteTransaction = async (id: string, reason?: string) => {
+    try {
+      const res = await fetch(`/api/transactions/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, user: currentUser }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal memadam pembayaran.' };
+      }
+      await refreshData();
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Ralat komunikasi dengan server.' };
+    }
+  };
+
+  // 5c. Update / Edit Transaction (Kemas Kini Bayaran jika tersalah isi)
+  const updateTransaction = async (
+    id: string,
+    updateData: {
+      payerName?: string;
+      payerPhone?: string;
+      paymentMethod?: PaymentMethod;
+      referenceNumber?: string;
+      notes?: string;
+      amountTenderedCents?: number;
+      changeReturnedCents?: number;
+      changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
+      items?: { feeItemId: string; currentPaymentCents: number }[];
+    }
+  ) => {
+    try {
+      const res = await fetch(`/api/transactions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updateData, user: currentUser }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal mengemas kini transaksi.' };
+      }
+      await refreshData();
+      return { success: true, transaction: data };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Ralat komunikasi dengan server.' };
+    }
+  };
+
+  // 5d. Mark Change Returned
+  const markChangeReturned = async (id: string, status: 'Sudah Dipulangkan' | 'Belum Dipulangkan' = 'Sudah Dipulangkan') => {
+    try {
+      const res = await fetch(`/api/transactions/${id}/return-change`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: currentUser, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal mengemas kini status pemulangan baki.' };
       }
       await refreshData();
       return { success: true };
@@ -490,6 +683,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // 9. Update Class Teachers
+  const updateClassTeachers = async (classTeachers: Record<string, string>) => {
+    try {
+      const res = await fetch('/api/class-teachers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classTeachers, user: currentUser }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal mengemas kini guru kelas.' };
+      }
+      setConfig((prev) => ({ ...prev, classTeachers: data }));
+      await refreshData();
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal menyambung ke server.' };
+    }
+  };
+
+  // 10. Parse Class Teachers Document File (PDF, Word, CSV, Excel, Image)
+  const parseClassTeachersFile = async (
+    fileBase64: string,
+    fileName: string,
+    mimeType: string
+  ) => {
+    try {
+      const res = await fetch('/api/class-teachers/parse-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileBase64, fileName, mimeType, user: currentUser }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal memproses fail guru kelas.' };
+      }
+      return {
+        success: true,
+        extracted: data.extracted,
+        totalFound: data.totalFound,
+        fileName: data.fileName,
+      };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Ralat sambungan ke server.' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -501,6 +741,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         currentUser,
         setCurrentUser,
         isLoading,
+        isRealtimeConnected,
         refreshData,
         addStudent,
         updateStudent,
@@ -510,9 +751,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         importStudents,
         recordPayment,
         cancelTransaction,
+        deleteTransaction,
+        updateTransaction,
+        markChangeReturned,
         markReceiptPrinted,
         updateFeeItems,
         updateConfig,
+        updateClassTeachers,
+        parseClassTeachersFile,
         getStudentSummary,
         allStudentSummaries,
         stats,
