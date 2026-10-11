@@ -16,7 +16,24 @@ import {
   Calendar,
   Layers,
   Camera,
+  PieChart as PieIcon,
+  BarChart3,
 } from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import { Transaction } from '../types';
 
 interface DashboardViewProps {
@@ -106,6 +123,91 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const unpaidStudentsCount = React.useMemo(() => {
     return allStudentSummaries.filter((s) => s.paidCents === 0).length;
+  }, [allStudentSummaries]);
+
+  // 1. Daily Collection Trend (Carta Aliran Kutipan Yuran Harian)
+  const dailyCollectionsData = React.useMemo(() => {
+    const validTxs = transactions.filter((t) => t.status === 'Sah');
+    const dayMap = new Map<string, { date: string; displayDate: string; totalRM: number; count: number }>();
+
+    for (const t of validTxs) {
+      // Extract date portion (YYYY-MM-DD)
+      const rawDate = t.timestamp ? t.timestamp.split('T')[0] : '';
+      if (!rawDate) continue;
+
+      const current = dayMap.get(rawDate) || {
+        date: rawDate,
+        displayDate: rawDate.split('-').reverse().slice(0, 2).join('/'), // DD/MM
+        totalRM: 0,
+        count: 0,
+      };
+      current.totalRM += t.totalAmountCents / 100;
+      current.count += 1;
+      dayMap.set(rawDate, current);
+    }
+
+    // Sort ascending by chronological date
+    const sorted = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    // If transactions exist, return them; otherwise provide recent dates placeholder
+    if (sorted.length > 0) {
+      return sorted.map((d) => ({
+        ...d,
+        totalRM: Number(d.totalRM.toFixed(2)),
+      }));
+    }
+
+    return [
+      { date: '2026-01-15', displayDate: '15/01', totalRM: 133.0, count: 1 },
+      { date: '2026-01-16', displayDate: '16/01', totalRM: 95.0, count: 1 },
+      { date: '2026-01-17', displayDate: '17/01', totalRM: 54.0, count: 1 },
+    ];
+  }, [transactions]);
+
+  // 2. PIBG Contribution Student Status (Peratusan Murid Telah Membayar Sumbangan PIBG)
+  const pibgStats = React.useMemo(() => {
+    let directPaidCount = 0;
+    let familyRepPaidCount = 0;
+    let unpaidCount = 0;
+
+    for (const s of allStudentSummaries) {
+      if (s.pibgFamilyPayment?.isPaid) {
+        if (!s.pibgFamilyPayment.isRepresentative) {
+          familyRepPaidCount += 1;
+        } else {
+          directPaidCount += 1;
+        }
+      } else {
+        const pibgBalance = s.itemBalances.find(
+          (b) => b.feeItemName.toLowerCase().includes('pibg') || b.feeItemId === 'item_11'
+        );
+        if (pibgBalance && pibgBalance.isPaid) {
+          directPaidCount += 1;
+        } else {
+          unpaidCount += 1;
+        }
+      }
+    }
+
+    const totalStudents = allStudentSummaries.length || 1;
+    const totalPibgPaidStudents = directPaidCount + familyRepPaidCount;
+    const paidPercentage = Math.round((totalPibgPaidStudents / totalStudents) * 100);
+
+    const pieData = [
+      { name: 'Bayar Terus / Wakil', value: directPaidCount, color: '#10b981' },
+      { name: 'Melalui Wakil Keluarga', value: familyRepPaidCount, color: '#059669' },
+      { name: 'Belum Bayar PIBG', value: unpaidCount, color: '#f59e0b' },
+    ].filter((d) => d.value > 0);
+
+    return {
+      directPaidCount,
+      familyRepPaidCount,
+      unpaidCount,
+      totalPibgPaidStudents,
+      totalStudents,
+      paidPercentage,
+      pieData,
+    };
   }, [allStudentSummaries]);
 
   return (
@@ -245,6 +347,179 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {stats.totalStudents} <span className="text-xs font-normal text-slate-400">orang</span>
             </div>
             <p className="text-[11px] text-emerald-400 mt-1 font-medium">Pra hingga Tahun 6</p>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Visual Charts Section (Recharts: Aliran Kutipan Harian & Status Sumbangan PIBG) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Chart 1: Carta Aliran Kutipan Yuran Harian */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+            <div>
+              <div className="flex items-center space-x-2">
+                <BarChart3 className="w-4 h-4 text-emerald-600" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Carta Aliran Kutipan Yuran Harian (RM)
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Trend kutipan wang yuran dan keperluan yang direkodkan mengikut tarikh
+              </p>
+            </div>
+            <span className="text-[11px] font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md">
+              Kutipan Sah: {formatRM(stats.totalCollectionsCents)}
+            </span>
+          </div>
+
+          <div className="w-full h-64 sm:h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={dailyCollectionsData}
+                margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#059669" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#059669" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="displayDate"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                  tickFormatter={(val) => `RM${val}`}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-xs space-y-1 border border-slate-800">
+                          <p className="font-bold text-emerald-400">Tarikh: {data.date || label}</p>
+                          <p className="text-slate-200">
+                            Jumlah Kutipan: <span className="font-mono font-bold text-white">RM{data.totalRM.toFixed(2)}</span>
+                          </p>
+                          <p className="text-slate-400 text-[10px]">Bilangan Transaksi: {data.count} resit</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="totalRM"
+                  stroke="#059669"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#colorTotal)"
+                  name="Jumlah (RM)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Chart 2: Peratusan Murid Telah Membayar Sumbangan PIBG */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+          <div className="border-b border-slate-100 pb-3 mb-2">
+            <div className="flex items-center space-x-2">
+              <PieIcon className="w-4 h-4 text-emerald-600" />
+              <h2 className="text-sm font-bold text-slate-900">
+                Status Sumbangan PIBG Keluarga
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Peratusan murid yang telah melunaskan Sumbangan PIBG (RM20.00 / keluarga)
+            </p>
+          </div>
+
+          <div className="w-full h-52 sm:h-56 relative flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pibgStats.pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {pibgStats.pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      const percent = Math.round((data.value / pibgStats.totalStudents) * 100);
+                      return (
+                        <div className="bg-slate-900 text-white p-2.5 rounded-lg shadow-xl text-xs space-y-0.5 border border-slate-800">
+                          <p className="font-bold text-emerald-400">{data.name}</p>
+                          <p className="font-mono text-white">
+                            {data.value} murid ({percent}%)
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            
+            {/* Center Donut Metric */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-2xl font-black font-mono text-emerald-700 leading-none">
+                {pibgStats.paidPercentage}%
+              </span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Lunas PIBG</span>
+            </div>
+          </div>
+
+          {/* Breakdown Legend Details */}
+          <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center space-x-1.5 text-slate-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                <span>Bayar Terus / Wakil:</span>
+              </span>
+              <span className="font-bold font-mono text-slate-900">
+                {pibgStats.directPaidCount} orang
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="flex items-center space-x-1.5 text-slate-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-700 shrink-0"></span>
+                <span>Melalui Wakil Keluarga:</span>
+              </span>
+              <span className="font-bold font-mono text-slate-900">
+                {pibgStats.familyRepPaidCount} orang
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="flex items-center space-x-1.5 text-slate-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+                <span>Belum Membayar:</span>
+              </span>
+              <span className="font-bold font-mono text-amber-700">
+                {pibgStats.unpaidCount} orang
+              </span>
+            </div>
           </div>
         </div>
 

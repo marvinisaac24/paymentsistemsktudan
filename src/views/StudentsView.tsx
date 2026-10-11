@@ -8,6 +8,7 @@ import {
   compareClassNames,
   parseClassInfo,
 } from '../utils/classes';
+import { fuzzyMatch } from '../utils/fuzzySearch';
 import {
   Search,
   UserPlus,
@@ -80,23 +81,17 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     return ['Semua', ...arr];
   }, [allStudentSummaries]);
 
-  // Filtered summaries
+  // Filtered summaries with fuzzy search support
   const filteredSummaries = useMemo(() => {
-    const result = allStudentSummaries.filter((sum) => {
-      const q = searchQuery.toLowerCase().trim();
-      const s = sum.student;
-      const matchSearch =
-        !q ||
-        s.name.toLowerCase().includes(q) ||
-        s.className.toLowerCase().includes(q) ||
-        (s.parentName && s.parentName.toLowerCase().includes(q)) ||
-        (s.myKid && s.myKid.includes(q));
+    const q = searchQuery.trim();
 
+    const scored = allStudentSummaries.map((sum) => {
+      const s = sum.student;
       const { level, stream } = parseClassInfo(s.className);
       const matchLevel = selectedLevel === 'Semua' || level === selectedLevel;
       const matchStream = selectedStream === 'Semua' || stream === selectedStream;
       const matchClass = selectedClass === 'Semua' || s.className === selectedClass;
-      
+
       let matchStatus = true;
       if (selectedStatus === 'Telah Membayar') {
         matchStatus = sum.paidCents > 0;
@@ -104,15 +99,55 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         matchStatus = sum.paidCents === 0;
       }
 
-      return matchSearch && matchLevel && matchStream && matchClass && matchStatus;
+      if (!matchLevel || !matchStream || !matchClass || !matchStatus) {
+        return { sum, score: 0, matched: false };
+      }
+
+      if (!q) {
+        return { sum, score: 1, matched: true };
+      }
+
+      // Check fuzzy match across student name, class name, parent name, and myKid
+      const resName = fuzzyMatch(s.name, q);
+      const resClass = fuzzyMatch(s.className, q);
+      const resParent = fuzzyMatch(s.parentName || '', q);
+      const resMyKid = s.myKid && s.myKid.includes(q) ? { match: true, score: 1 } : { match: false, score: 0 };
+
+      const bestScore = Math.max(
+        resName.match ? resName.score : 0,
+        resClass.match ? resClass.score * 0.9 : 0,
+        resParent.match ? resParent.score * 0.8 : 0,
+        resMyKid.match ? resMyKid.score : 0
+      );
+
+      const matched = resName.match || resClass.match || resParent.match || resMyKid.match;
+      return { sum, score: bestScore, matched };
     });
 
+    const filtered = scored.filter((item) => item.matched);
+
+    // If query exists, prioritize higher fuzzy match score, then class & name
+    if (q) {
+      return filtered
+        .sort((a, b) => {
+          if (Math.abs(b.score - a.score) > 0.15) {
+            return b.score - a.score;
+          }
+          const cmpClass = compareClassNames(a.sum.student.className, b.sum.student.className);
+          if (cmpClass !== 0) return cmpClass;
+          return a.sum.student.name.localeCompare(b.sum.student.name);
+        })
+        .map((item) => item.sum);
+    }
+
     // Natural sort: Class order -> Student name
-    return result.sort((a, b) => {
-      const cmpClass = compareClassNames(a.student.className, b.student.className);
-      if (cmpClass !== 0) return cmpClass;
-      return a.student.name.localeCompare(b.student.name);
-    });
+    return filtered
+      .sort((a, b) => {
+        const cmpClass = compareClassNames(a.sum.student.className, b.sum.student.className);
+        if (cmpClass !== 0) return cmpClass;
+        return a.sum.student.name.localeCompare(b.sum.student.name);
+      })
+      .map((item) => item.sum);
   }, [allStudentSummaries, searchQuery, selectedLevel, selectedStream, selectedClass, selectedStatus]);
 
   // Reset page when search or filters change

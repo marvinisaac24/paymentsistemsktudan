@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Student, PaymentMethod, Transaction } from '../types';
 import { formatRM, rmToCents, centsToRM, maskMyKid } from '../utils/currency';
 import { findSuggestedSiblings, generatePibgFamilyNote } from '../utils/family';
+import { fuzzyMatch } from '../utils/fuzzySearch';
 import {
   CreditCard,
   X,
@@ -158,16 +159,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   }, [selectedStudentId, initialAction]);
 
-  // Filter students for search dropdown
-  const filteredStudents = students.filter((s) => {
-    const q = studentSearch.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.className.toLowerCase().includes(q) ||
-      (s.myKid && s.myKid.includes(q))
-    );
-  });
+  // Filter students for search dropdown with fuzzy search support
+  const filteredStudents = useMemo(() => {
+    const q = studentSearch.trim();
+    if (!q) return students;
+
+    const scored = students.map((s) => {
+      const resName = fuzzyMatch(s.name, q);
+      const resClass = fuzzyMatch(s.className, q);
+      const resMyKid = s.myKid && s.myKid.includes(q) ? { match: true, score: 1 } : { match: false, score: 0 };
+      const resParent = fuzzyMatch(s.parentName || '', q);
+
+      const maxScore = Math.max(
+        resName.match ? resName.score : 0,
+        resClass.match ? resClass.score * 0.9 : 0,
+        resMyKid.match ? resMyKid.score : 0,
+        resParent.match ? resParent.score * 0.8 : 0
+      );
+      const matched = resName.match || resClass.match || resMyKid.match || resParent.match;
+      return { student: s, score: maxScore, matched };
+    });
+
+    return scored
+      .filter((item) => item.matched)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.student);
+  }, [students, studentSearch]);
 
   // PIBG Fee Item identification
   const pibgFeeItem = useMemo(() => {
@@ -215,28 +232,50 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setSiblingSearchInput('');
   }, [selectedStudentId]);
 
-  // Search suggestions for Representative student
+  // Search suggestions for Representative student with fuzzy search
   const filteredRepSuggestions = useMemo(() => {
-    const q = repSearchInput.toLowerCase().trim();
+    const q = repSearchInput.trim();
     if (!q) return [];
-    return students
-      .filter((s) => s.name.toLowerCase().includes(q) || s.className.toLowerCase().includes(q))
-      .slice(0, 8);
+    
+    const scored = students.map((s) => {
+      const resName = fuzzyMatch(s.name, q);
+      const resClass = fuzzyMatch(s.className, q);
+      const maxScore = Math.max(
+        resName.match ? resName.score : 0,
+        resClass.match ? resClass.score * 0.9 : 0
+      );
+      return { student: s, score: maxScore, matched: resName.match || resClass.match };
+    });
+
+    return scored
+      .filter((i) => i.matched)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((i) => i.student);
   }, [repSearchInput, students]);
 
-  // Search suggestions for Siblings to link from any class
+  // Search suggestions for Siblings to link from any class with fuzzy search
   const filteredSiblingSuggestions = useMemo(() => {
-    const q = siblingSearchInput.toLowerCase().trim();
+    const q = siblingSearchInput.trim();
     if (!q) return [];
     const repId = effectiveRepStudentId;
-    return students
-      .filter(
-        (s) =>
-          s.id !== repId &&
-          !linkedSiblingIds.includes(s.id) &&
-          (s.name.toLowerCase().includes(q) || s.className.toLowerCase().includes(q))
-      )
-      .slice(0, 8);
+    const candidates = students.filter((s) => s.id !== repId && !linkedSiblingIds.includes(s.id));
+
+    const scored = candidates.map((s) => {
+      const resName = fuzzyMatch(s.name, q);
+      const resClass = fuzzyMatch(s.className, q);
+      const maxScore = Math.max(
+        resName.match ? resName.score : 0,
+        resClass.match ? resClass.score * 0.9 : 0
+      );
+      return { student: s, score: maxScore, matched: resName.match || resClass.match };
+    });
+
+    return scored
+      .filter((i) => i.matched)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((i) => i.student);
   }, [siblingSearchInput, students, effectiveRepStudentId, linkedSiblingIds]);
 
   const isPibgBeingPaid = Boolean(

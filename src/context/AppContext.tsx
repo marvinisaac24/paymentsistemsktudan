@@ -221,16 +221,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const data = snapshot.data();
             if (data) {
               setIsRealtimeConnected(true);
+              // Only apply Firestore snapshot if it has valid data and doesn't overwrite more recent server transactions
+              setTransactions((prevTx) => {
+                if (Array.isArray(data.transactions) && data.transactions.length >= prevTx.length) {
+                  return data.transactions as Transaction[];
+                }
+                return prevTx;
+              });
+              setStudents((prevStd) => {
+                if (Array.isArray(data.students) && data.students.length >= prevStd.length) {
+                  return data.students as Student[];
+                }
+                return prevStd;
+              });
               if (data.config) setConfig(data.config as SchoolConfig);
               if (Array.isArray(data.feeItems)) setFeeItems(data.feeItems as FeeItem[]);
-              if (Array.isArray(data.students)) setStudents(data.students as Student[]);
-              if (Array.isArray(data.transactions)) setTransactions(data.transactions as Transaction[]);
               if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs as AuditLog[]);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-              } catch {
-                // ignore
-              }
             }
           }
         },
