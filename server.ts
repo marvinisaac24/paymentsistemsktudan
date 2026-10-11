@@ -522,6 +522,72 @@ PENTING:
     res.json(db.students[index]);
   });
 
+  // 5a-sibling. Update Student Siblings Linkage (Pautan Adik-Beradik & Ahli Keluarga)
+  app.put('/api/students/:id/siblings', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { siblingIds, user } = req.body;
+    const student = db.students.find((s) => s.id === id);
+
+    if (!student) {
+      return res.status(404).json({ error: 'Murid tidak ditemui.' });
+    }
+
+    if (!Array.isArray(siblingIds)) {
+      return res.status(400).json({ error: 'Senarai ID adik-beradik tidak sah.' });
+    }
+
+    const time = getMalaysiaTime();
+    const cleanSiblingIds = siblingIds.filter((sId) => sId && sId !== id);
+
+    // Collect all family members in this cluster
+    const clusterIds = Array.from(new Set([id, ...cleanSiblingIds]));
+
+    // Find or create familyId
+    let familyId = student.familyId;
+    if (!familyId) {
+      for (const mId of clusterIds) {
+        const m = db.students.find((s) => s.id === mId);
+        if (m?.familyId) {
+          familyId = m.familyId;
+          break;
+        }
+      }
+    }
+    if (!familyId) {
+      familyId = `fam_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    }
+
+    // Apply to current student
+    student.familyId = familyId;
+    student.siblingIds = cleanSiblingIds;
+    student.updatedAt = time.iso;
+
+    // Symmetrically update all linked siblings
+    for (const sibId of cleanSiblingIds) {
+      const sib = db.students.find((s) => s.id === sibId);
+      if (sib) {
+        sib.familyId = familyId;
+        const sibOthers = clusterIds.filter((mId) => mId !== sib.id);
+        sib.siblingIds = Array.from(new Set([...(sib.siblingIds || []), ...sibOthers]));
+        sib.updatedAt = time.iso;
+      }
+    }
+
+    db.auditLogs.unshift({
+      id: `log_${Date.now()}`,
+      timestamp: time.iso,
+      timestampMalaysia: time.formatted,
+      action: 'KEMASKINI_KELUARGA',
+      performedBy: user?.name || 'Petugas',
+      role: user?.role || 'Guru/Petugas',
+      details: `Mengemas kini pautan keluarga bagi ${student.name} (${student.className}) bersama ${cleanSiblingIds.length} adik-beradik.`,
+      targetId: id,
+    });
+
+    saveDatabase(db);
+    res.json({ success: true, student, siblingCount: cleanSiblingIds.length });
+  });
+
   // 5b. Delete Single Student
   app.delete('/api/students/:id', (req: Request, res: Response) => {
     const { id } = req.params;
@@ -734,6 +800,9 @@ PENTING:
       amountTenderedCents,
       changeReturnedCents,
       changeReturnedStatus,
+      isPibgFamilyPayment: requestedIsPibgFamilyPayment,
+      pibgRepresentativeStudentId: requestedPibgRepId,
+      pibgFamilySiblingIds: requestedSiblingIds,
       user,
     } = req.body;
 
@@ -805,6 +874,86 @@ PENTING:
 
     const time = getMalaysiaTime();
 
+    // Check if transaction contains Sumbangan PIBG
+    const hasPibgItem = itemAllocations.some((it) =>
+      it.feeItemName.toLowerCase().includes('pibg')
+    );
+    const isPibgFamilyPayment = Boolean(requestedIsPibgFamilyPayment || hasPibgItem);
+
+    let pibgRepresentativeStudentId = student.id;
+    let pibgRepresentativeStudentName = student.name;
+    let pibgRepresentativeClassName = student.className;
+    let pibgFamilySiblingIds: string[] = [];
+    let pibgFamilySiblingNamesWithClasses: any[] = [];
+
+    if (isPibgFamilyPayment) {
+      if (requestedPibgRepId) {
+        const rep = db.students.find((s) => s.id === requestedPibgRepId);
+        if (rep) {
+          pibgRepresentativeStudentId = rep.id;
+          pibgRepresentativeStudentName = rep.name;
+          pibgRepresentativeClassName = rep.className;
+        }
+      }
+
+      if (Array.isArray(requestedSiblingIds)) {
+        pibgFamilySiblingIds = requestedSiblingIds.filter(
+          (sId: string) => sId && sId !== pibgRepresentativeStudentId
+        );
+      } else if (student.siblingIds && student.siblingIds.length > 0) {
+        pibgFamilySiblingIds = student.siblingIds.filter((sId) => sId !== pibgRepresentativeStudentId);
+      }
+
+      // Map sibling details with name and class
+      pibgFamilySiblingNamesWithClasses = pibgFamilySiblingIds.map((sId) => {
+        const sib = db.students.find((s) => s.id === sId);
+        return {
+          id: sId,
+          name: sib ? sib.name : 'Murid',
+          className: sib ? sib.className : '-',
+          schoolYear: sib ? sib.schoolYear : student.schoolYear,
+        };
+      });
+
+      // Symmetrically update sibling connections in db.students
+      const familyGroupIds = Array.from(new Set([student.id, pibgRepresentativeStudentId, ...pibgFamilySiblingIds]));
+      let familyId = student.familyId;
+      if (!familyId) {
+        for (const fId of familyGroupIds) {
+          const s = db.students.find((x) => x.id === fId);
+          if (s?.familyId) {
+            familyId = s.familyId;
+            break;
+          }
+        }
+      }
+      if (!familyId) {
+        familyId = `fam_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      }
+
+      for (const fId of familyGroupIds) {
+        const mem = db.students.find((s) => s.id === fId);
+        if (mem) {
+          mem.familyId = familyId;
+          const others = familyGroupIds.filter((id) => id !== mem.id);
+          mem.siblingIds = Array.from(new Set([...(mem.siblingIds || []), ...others]));
+          mem.updatedAt = time.iso;
+        }
+      }
+    }
+
+    // Auto-generate note if family PIBG:
+    // "Sumbangan PIBG keluarga telah dibayar melalui [Nama Murid Wakil], kelas [Kelas], pada [Tarikh]. Nombor resit: [Nombor Resit]."
+    let transactionNotes = notes?.trim() || '';
+    if (isPibgFamilyPayment) {
+      const autoNote = `Sumbangan PIBG keluarga telah dibayar melalui ${pibgRepresentativeStudentName}, kelas ${pibgRepresentativeClassName}, pada ${time.formatted}. Nombor resit: ${receiptNumber}.`;
+      if (!transactionNotes) {
+        transactionNotes = autoNote;
+      } else if (!transactionNotes.includes(pibgRepresentativeStudentName)) {
+        transactionNotes = `${autoNote} ${transactionNotes}`;
+      }
+    }
+
     const newTransaction: Transaction = {
       id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
       receiptNumber,
@@ -822,13 +971,20 @@ PENTING:
       referenceNumber: referenceNumber?.trim() || '',
       recordedBy: user?.name || 'Petugas',
       userRole: user?.role || 'Guru/Petugas',
-      notes: notes?.trim() || '',
+      notes: transactionNotes,
       amountTenderedCents: typeof amountTenderedCents === 'number' ? amountTenderedCents : calculatedTotalCents,
       changeReturnedCents: typeof changeReturnedCents === 'number' ? changeReturnedCents : 0,
       changeReturnedStatus: changeReturnedStatus || (typeof changeReturnedCents === 'number' && changeReturnedCents > 0 ? 'Sudah Dipulangkan' : 'Tiada Baki'),
       status: 'Sah',
       printCount: 1,
       classTeacherName: db.config.classTeachers?.[student.className] || '',
+      // Family PIBG
+      isPibgFamilyPayment,
+      pibgRepresentativeStudentId: isPibgFamilyPayment ? pibgRepresentativeStudentId : undefined,
+      pibgRepresentativeStudentName: isPibgFamilyPayment ? pibgRepresentativeStudentName : undefined,
+      pibgRepresentativeClassName: isPibgFamilyPayment ? pibgRepresentativeClassName : undefined,
+      pibgFamilySiblingIds: isPibgFamilyPayment ? pibgFamilySiblingIds : undefined,
+      pibgFamilySiblingNamesWithClasses: isPibgFamilyPayment ? pibgFamilySiblingNamesWithClasses : undefined,
     };
 
     db.transactions.push(newTransaction);
@@ -840,7 +996,9 @@ PENTING:
       action: 'TAMBAH_BAYARAN',
       performedBy: user?.name || 'Petugas',
       role: user?.role || 'Guru/Petugas',
-      details: `Merekodkan bayaran resit ${receiptNumber} sebanyak RM${(calculatedTotalCents / 100).toFixed(2)} bagi murid ${student.name} (${student.className}) melalui kaedah ${newTransaction.paymentMethod}.`,
+      details: isPibgFamilyPayment && pibgFamilySiblingIds.length > 0
+        ? `Merekodkan bayaran resit ${receiptNumber} Sumbangan PIBG Keluarga melalui wakil ${pibgRepresentativeStudentName} (${pibgRepresentativeClassName}) bagi ${pibgFamilySiblingIds.length} adik-beradik sebanyak RM${(calculatedTotalCents / 100).toFixed(2)} (${newTransaction.paymentMethod}).`
+        : `Merekodkan bayaran resit ${receiptNumber} sebanyak RM${(calculatedTotalCents / 100).toFixed(2)} bagi murid ${student.name} (${student.className}) melalui kaedah ${newTransaction.paymentMethod}.`,
       targetId: newTransaction.id,
     });
 

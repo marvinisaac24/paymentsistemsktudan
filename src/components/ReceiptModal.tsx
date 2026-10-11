@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Transaction, SchoolConfig } from '../types';
 import { formatRM } from '../utils/currency';
 import { generateSinglePageCombinedPdf, generateReceiptPdf } from '../utils/receiptPdf';
-import { Download, Printer, X, AlertTriangle, FileText, Receipt, Scissors, Edit3, Trash2 } from 'lucide-react';
+import { Download, Printer, X, AlertTriangle, FileText, Receipt, Scissors, Edit3, Trash2, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 interface ReceiptModalProps {
@@ -10,6 +10,7 @@ interface ReceiptModalProps {
   onClose: () => void;
   onEditTransaction?: (transaction: Transaction) => void;
   onOpenCancelModal?: (transaction: Transaction) => void;
+  onOpenPibgReceipt?: (transaction: Transaction) => void;
 }
 
 interface SingleReceiptProps {
@@ -220,6 +221,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onEditTransaction,
   onOpenCancelModal,
+  onOpenPibgReceipt,
 }) => {
   const { config, markReceiptPrinted, getStudentSummary } = useApp();
   const [activePageTab, setActivePageTab] = useState<'combined' | 'ibu_bapa' | 'sekolah'>('combined');
@@ -329,6 +331,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <Download className="w-4 h-4" />
               <span>{isGeneratingPdf ? 'Menjana...' : 'Muat Turun PDF (1 Halaman - Salinan Guru & Ibu Bapa)'}</span>
             </button>
+            {onOpenPibgReceipt && (transaction.isPibgFamilyPayment || transaction.items.some((it) => it.feeItemName.toLowerCase().includes('pibg'))) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const tx = transaction;
+                  onClose();
+                  onOpenPibgReceipt(tx);
+                }}
+                className="inline-flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-xs active:scale-95"
+                title="Cetak atau muat turun Resit Khas Sumbangan PIBG (Keluarga) dengan senarai adik-beradik"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Resit Khas PIBG</span>
+              </button>
+            )}
             {onEditTransaction && transaction.status !== 'Dibatalkan' && (
               <button
                 type="button"

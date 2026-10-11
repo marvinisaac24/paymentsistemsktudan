@@ -188,7 +188,11 @@
       "parentPhone": "013-8821943",
       "schoolYear": "2026",
       "createdAt": "2026-01-10T08:00:00.000Z",
-      "updatedAt": "2026-01-10T08:00:00.000Z"
+      "updatedAt": "2026-10-10T20:54:55.880Z",
+      "familyId": "fam_1791665684063_tthc",
+      "siblingIds": [
+        "std_002"
+      ]
     },
     {
       "id": "std_002",
@@ -199,7 +203,11 @@
       "parentPhone": "019-8765432",
       "schoolYear": "2026",
       "createdAt": "2026-01-10T08:15:00.000Z",
-      "updatedAt": "2026-01-10T08:15:00.000Z"
+      "updatedAt": "2026-10-10T20:54:55.880Z",
+      "familyId": "fam_1791665684063_tthc",
+      "siblingIds": [
+        "std_001"
+      ]
     },
     {
       "id": "std_003",
@@ -14492,6 +14500,46 @@
   ],
   "auditLogs": [
     {
+      "id": "log_1791665695880",
+      "timestamp": "2026-10-10T20:54:55.880Z",
+      "timestampMalaysia": "11/10/2026, 04:54:55 PG",
+      "action": "KEMASKINI_KELUARGA",
+      "performedBy": "Ujian Guru",
+      "role": "Guru",
+      "details": "Mengemas kini pautan keluarga bagi Muhammad Danial bin Radzi (3 ARIF) bersama 1 adik-beradik.",
+      "targetId": "std_001"
+    },
+    {
+      "id": "log_1791665684064",
+      "timestamp": "2026-10-10T20:54:44.058Z",
+      "timestampMalaysia": "11/10/2026, 04:54:44 PG",
+      "action": "KEMASKINI_KELUARGA",
+      "performedBy": "Ujian Guru",
+      "role": "Guru",
+      "details": "Mengemas kini pautan keluarga bagi Muhammad Danial bin Radzi (3 ARIF) bersama 1 adik-beradik.",
+      "targetId": "std_001"
+    },
+    {
+      "id": "log_1791664390076",
+      "timestamp": "2026-10-10T20:33:10.076Z",
+      "timestampMalaysia": "11/10/2026, 04:33:10 PG",
+      "action": "PADAM_BAYARAN",
+      "performedBy": "LIM AI GIOK",
+      "role": "Pentadbir",
+      "details": "MEMADAM rekod bayaran resit SKT/2026/0008 bernilai RM8.00 bagi murid ASYRAF DANIAL BIN SUHAILI (PRASEKOLAH BESTARI). Sebab: \"Pembersihan transaksi ujian pengesahan\".",
+      "targetId": "tx_1791664381873_mxj0l"
+    },
+    {
+      "id": "log_1791664381873",
+      "timestamp": "2026-10-10T20:33:01.866Z",
+      "timestampMalaysia": "11/10/2026, 04:33:01 PG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "LIM AI GIOK",
+      "role": "Pentadbir",
+      "details": "Merekodkan bayaran resit SKT/2026/0008 sebanyak RM8.00 bagi murid ASYRAF DANIAL BIN SUHAILI (PRASEKOLAH BESTARI) melalui kaedah Tunai.",
+      "targetId": "tx_1791664381873_mxj0l"
+    },
+    {
       "id": "log_1791439552045",
       "timestamp": "2026-10-08T06:05:51.978Z",
       "timestampMalaysia": "08/10/2026, 02:05:51 PTG",
@@ -14636,5 +14684,5 @@
       "targetId": "tx_004"
     }
   ],
-  "receiptCounter": 7
+  "receiptCounter": 8
 }

@@ -9,6 +9,7 @@ import { CancelTransactionModal } from './components/CancelTransactionModal';
 import { StudentOptOutModal } from './components/StudentOptOutModal';
 import { BulkDeleteStudentsModal } from './components/BulkDeleteStudentsModal';
 import { EditTransactionModal } from './components/EditTransactionModal';
+import { PibgReceiptModal } from './components/PibgReceiptModal';
 import { DashboardView } from './views/DashboardView';
 import { StudentsView } from './views/StudentsView';
 import { ClassPhotosView } from './views/ClassPhotosView';
@@ -25,9 +26,11 @@ const MainContent: React.FC = () => {
 
   // Modals state
   const [selectedTransactionForReceipt, setSelectedTransactionForReceipt] = useState<Transaction | null>(null);
+  const [selectedPibgTransaction, setSelectedPibgTransaction] = useState<Transaction | null>(null);
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<Transaction | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentStudentId, setPaymentStudentId] = useState<string | null>(null);
+  const [paymentAction, setPaymentAction] = useState<'photo-5r' | 'photo-8r' | 'photo-pano' | 'photos' | 'all' | undefined>(undefined);
 
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -37,8 +40,12 @@ const MainContent: React.FC = () => {
   const [cancelModalTransaction, setCancelModalTransaction] = useState<Transaction | null>(null);
   const [bulkDeleteStudentIds, setBulkDeleteStudentIds] = useState<string[]>([]);
 
-  const handleOpenPayment = (studentId?: string) => {
+  const handleOpenPayment = (
+    studentId?: string,
+    action?: 'photo-5r' | 'photo-8r' | 'photo-pano' | 'photos' | 'all'
+  ) => {
     setPaymentStudentId(studentId || null);
+    setPaymentAction(action);
     setIsPaymentModalOpen(true);
   };
 
@@ -53,8 +60,13 @@ const MainContent: React.FC = () => {
   };
 
   const handlePaymentSuccess = (tx: Transaction) => {
-    // Automatically open receipt preview for newly created payment
-    setSelectedTransactionForReceipt(tx);
+    // If payment is purely or includes family PIBG contribution, open dedicated PIBG receipt directly
+    const hasPibg = tx.isPibgFamilyPayment || tx.items.some((it) => it.feeItemName.toLowerCase().includes('pibg'));
+    if (hasPibg) {
+      setSelectedPibgTransaction(tx);
+    } else {
+      setSelectedTransactionForReceipt(tx);
+    }
   };
 
   return (
@@ -109,13 +121,14 @@ const MainContent: React.FC = () => {
 
         {currentTab === 'students' && (
           <StudentsView
-            onOpenPaymentForStudent={(id) => handleOpenPayment(id)}
+            onOpenPaymentForStudent={(id, action) => handleOpenPayment(id, action)}
             onOpenAddStudent={handleOpenAddStudent}
             onOpenEditStudent={handleOpenEditStudent}
             onOpenOptOutModal={(std) => setOptOutModalStudent(std)}
             onOpenBulkDelete={(ids) => setBulkDeleteStudentIds(ids)}
             onOpenImport={() => setIsImportModalOpen(true)}
             onSelectTransaction={(tx) => setSelectedTransactionForReceipt(tx)}
+            onOpenPibgReceiptForTransaction={(tx) => setSelectedPibgTransaction(tx)}
           />
         )}
 
@@ -134,6 +147,7 @@ const MainContent: React.FC = () => {
             onOpenCancelModal={(tx) => setCancelModalTransaction(tx)}
             onOpenNewPayment={() => handleOpenPayment()}
             onOpenEditTransaction={(tx) => setSelectedTransactionForEdit(tx)}
+            onOpenPibgReceipt={(tx) => setSelectedPibgTransaction(tx)}
           />
         )}
 
@@ -168,6 +182,22 @@ const MainContent: React.FC = () => {
           setSelectedTransactionForReceipt(null);
           setCancelModalTransaction(tx);
         }}
+        onOpenPibgReceipt={(tx) => {
+          setSelectedTransactionForReceipt(null);
+          setSelectedPibgTransaction(tx);
+        }}
+      />
+
+      {/* Dedicated Sumbangan PIBG Family Receipt Modal */}
+      <PibgReceiptModal
+        key={selectedPibgTransaction?.id || 'none-pibg'}
+        isOpen={!!selectedPibgTransaction}
+        transaction={selectedPibgTransaction}
+        onClose={() => setSelectedPibgTransaction(null)}
+        onOpenStandardReceipt={(tx) => {
+          setSelectedPibgTransaction(null);
+          setSelectedTransactionForReceipt(tx);
+        }}
       />
 
       <EditTransactionModal
@@ -184,15 +214,20 @@ const MainContent: React.FC = () => {
         }}
       />
 
-      <PaymentModal
-        isOpen={isPaymentModalOpen}
-        initialStudentId={paymentStudentId}
-        onClose={() => {
-          setIsPaymentModalOpen(false);
-          setPaymentStudentId(null);
-        }}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
+      {isPaymentModalOpen && (
+        <PaymentModal
+          key={`${paymentStudentId || 'general'}-${paymentAction || 'standard'}`}
+          isOpen={isPaymentModalOpen}
+          initialStudentId={paymentStudentId}
+          initialAction={paymentAction}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setPaymentStudentId(null);
+            setPaymentAction(undefined);
+          }}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
 
       <StudentModal
         isOpen={isStudentModalOpen}

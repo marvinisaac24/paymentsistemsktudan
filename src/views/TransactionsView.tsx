@@ -24,6 +24,7 @@ interface TransactionsViewProps {
   onOpenCancelModal: (tx: Transaction) => void;
   onOpenNewPayment: () => void;
   onOpenEditTransaction?: (tx: Transaction) => void;
+  onOpenPibgReceipt?: (tx: Transaction) => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
@@ -31,6 +32,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   onOpenCancelModal,
   onOpenNewPayment,
   onOpenEditTransaction,
+  onOpenPibgReceipt,
 }) => {
   const { transactions, currentUser, markChangeReturned } = useApp();
 
@@ -323,11 +325,22 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         <button
                           onClick={() => onSelectTransaction(tx)}
                           className="px-2.5 py-1 rounded bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 font-semibold text-[11px] transition cursor-pointer flex items-center space-x-1"
-                          title="Papar dan muat turun resit rasmi dua halaman"
+                          title="Papar dan muat turun resit rasmi satu halaman"
                         >
                           <Receipt className="w-3.5 h-3.5" />
                           <span>Resit PDF</span>
                         </button>
+
+                        {/* Dedicated PIBG Receipt Button */}
+                        {onOpenPibgReceipt && (tx.isPibgFamilyPayment || tx.items.some((it) => it.feeItemName.toLowerCase().includes('pibg'))) && (
+                          <button
+                            onClick={() => onOpenPibgReceipt(tx)}
+                            className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 font-bold text-[11px] border border-emerald-300 transition cursor-pointer flex items-center space-x-1"
+                            title="Papar dan cetak Resit Khas Sumbangan PIBG Keluarga (2 salinan berasingan)"
+                          >
+                            <span>Resit PIBG</span>
+                          </button>
+                        )}
 
                         {/* Edit Transaction Button (jika tersalah isi) */}
                         {onOpenEditTransaction && tx.status !== 'Dibatalkan' && (

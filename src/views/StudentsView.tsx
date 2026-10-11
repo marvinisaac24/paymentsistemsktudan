@@ -32,13 +32,17 @@ import {
 } from 'lucide-react';
 
 interface StudentsViewProps {
-  onOpenPaymentForStudent: (studentId: string) => void;
+  onOpenPaymentForStudent: (
+    studentId: string,
+    action?: 'photo-5r' | 'photo-8r' | 'photo-pano' | 'photos' | 'all'
+  ) => void;
   onOpenAddStudent: () => void;
   onOpenEditStudent: (student: Student) => void;
   onOpenOptOutModal: (student: Student) => void;
   onOpenBulkDelete: (studentIds: string[]) => void;
   onOpenImport: () => void;
   onSelectTransaction: (tx: Transaction) => void;
+  onOpenPibgReceiptForTransaction?: (tx: Transaction) => void;
 }
 
 export const StudentsView: React.FC<StudentsViewProps> = ({
@@ -49,6 +53,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   onOpenBulkDelete,
   onOpenImport,
   onSelectTransaction,
+  onOpenPibgReceiptForTransaction,
 }) => {
   const { allStudentSummaries, transactions, currentUser, deleteStudent, config } = useApp();
 
@@ -487,7 +492,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            onClick={() => onOpenPaymentForStudent(student.id, 'photo-5r')}
                             className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-500 transition cursor-pointer shadow-2xs"
                             title="Klik untuk rekod bayaran Gambar 5R"
                           >
@@ -505,7 +510,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            onClick={() => onOpenPaymentForStudent(student.id, 'photo-8r')}
                             className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-300 hover:border-indigo-500 transition cursor-pointer shadow-2xs"
                             title="Klik untuk rekod bayaran Gambar 8R"
                           >
@@ -523,7 +528,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            onClick={() => onOpenPaymentForStudent(student.id, 'photo-pano')}
                             className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-300 hover:border-amber-500 transition cursor-pointer shadow-2xs"
                             title="Klik untuk rekod bayaran Gambar Panorama"
                           >
@@ -532,6 +537,79 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                           </button>
                         )}
                       </div>
+
+                      {/* Sumbangan PIBG Mengikut Keluarga & Status Adik-Beradik */}
+                      {(() => {
+                        const pibgItem = summary.itemBalances.find((i) => i.feeItemName.toLowerCase().includes('pibg'));
+                        const isPaidViaFam = pibgItem?.isPaidViaFamilyRepresentative;
+                        const famInfo = pibgItem?.familyPibgPaymentInfo;
+                        const isDirectRep = summary.pibgFamilyPayment?.isRepresentative;
+
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-100 text-xs">
+                            <span className="text-[10px] font-black uppercase text-emerald-900 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                              <Users className="w-3 h-3 text-emerald-600" />
+                              <span>PIBG Keluarga:</span>
+                            </span>
+
+                            {isPaidViaFam && famInfo ? (
+                              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-sky-50 text-sky-950 border border-sky-300">
+                                <span className="text-sky-700 font-extrabold flex items-center space-x-1">
+                                  <span>✓ Telah dibayar melalui wakil keluarga</span>
+                                </span>
+                                <span className="text-slate-600 font-normal">
+                                  (Wakil: <strong className="text-slate-900">{famInfo.representativeStudentName}</strong> - {famInfo.representativeClassName} • No. Resit: <strong className="font-mono text-slate-900">{famInfo.receiptNumber}</strong>)
+                                </span>
+                                {onOpenPibgReceiptForTransaction && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const tx = transactions.find((t) => t.id === famInfo.transactionId);
+                                      if (tx) onOpenPibgReceiptForTransaction(tx);
+                                    }}
+                                    className="ml-1 px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    title="Cetak Resit Khas Sumbangan PIBG"
+                                  >
+                                    Cetak Resit PIBG
+                                  </button>
+                                )}
+                              </div>
+                            ) : isDirectRep && summary.pibgFamilyPayment ? (
+                              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-950 border border-emerald-300">
+                                <span>✓ Lunas (Wakil Keluarga • {summary.pibgFamilyPayment.siblings.length} adik-beradik)</span>
+                                {onOpenPibgReceiptForTransaction && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const tx = transactions.find((t) => t.id === summary.pibgFamilyPayment?.transactionId);
+                                      if (tx) onOpenPibgReceiptForTransaction(tx);
+                                    }}
+                                    className="ml-1 px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    title="Cetak Resit Khas Sumbangan PIBG"
+                                  >
+                                    Cetak Resit PIBG
+                                  </button>
+                                )}
+                              </div>
+                            ) : pibgItem?.isPaid ? (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                <span>✓ Lunas ({formatRM(pibgItem.paidCents || 2000)})</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                                <span>Belum Bayar PIBG</span>
+                              </span>
+                            )}
+
+                            {/* Siblings Count Chip */}
+                            {summary.linkedSiblings && summary.linkedSiblings.length > 0 && (
+                              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                                👥 {summary.linkedSiblings.length} Adik-Beradik: {summary.linkedSiblings.map(s => `${s.name} (${s.className})`).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -561,7 +639,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                     </button>
 
                     <button
-                      onClick={() => onOpenPaymentForStudent(student.id)}
+                      onClick={() => onOpenPaymentForStudent(student.id, 'photos')}
                       className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
                       title="Rekod penerimaan bayaran gambar (5R, 8R, Panorama)"
                     >
@@ -618,7 +696,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                           </h4>
                           <button
                             type="button"
-                            onClick={() => onOpenPaymentForStudent(student.id)}
+                            onClick={() => onOpenPaymentForStudent(student.id, 'photos')}
                             className="text-[11px] font-bold text-indigo-700 hover:text-indigo-800 underline cursor-pointer"
                           >
                             + Rekod Bayaran Gambar
@@ -688,6 +766,17 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                                 <span className="font-medium text-[11px] text-slate-600 bg-slate-200 px-2 py-0.5 rounded">
                                   Sedia Ada / Tidak Ambil
                                 </span>
+                              ) : it.isPaidViaFamilyRepresentative ? (
+                                <div className="text-right">
+                                  <span className="font-extrabold text-[10px] text-sky-800 bg-sky-100 border border-sky-300 px-1.5 py-0.5 rounded block">
+                                    Telah dibayar melalui wakil keluarga
+                                  </span>
+                                  {it.familyPibgPaymentInfo && (
+                                    <span className="text-[9px] text-sky-700 block mt-0.5 font-medium">
+                                      Wakil: {it.familyPibgPaymentInfo.representativeStudentName} ({it.familyPibgPaymentInfo.representativeClassName}) • {it.familyPibgPaymentInfo.receiptNumber}
+                                    </span>
+                                  )}
+                                </div>
                               ) : it.isPaid ? (
                                 <span className="font-bold text-[11px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
                                   Selesai

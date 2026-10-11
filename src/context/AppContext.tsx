@@ -46,6 +46,7 @@ interface AppContextType {
   }>;
   updateStudentOptOutItems: (studentId: string, optOutItemIds: string[]) => Promise<{ success: boolean; error?: string }>;
   importStudents: (list: Partial<Student>[]) => Promise<{ addedCount: number; skippedCount: number; skipped: { name: string; reason: string }[] }>;
+  setStudentSiblings: (studentId: string, siblingIds: string[]) => Promise<{ success: boolean; error?: string }>;
   
   // Transaction Actions
   recordPayment: (paymentData: {
@@ -59,6 +60,9 @@ interface AppContextType {
     amountTenderedCents?: number;
     changeReturnedCents?: number;
     changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
+    isPibgFamilyPayment?: boolean;
+    pibgRepresentativeStudentId?: string;
+    pibgFamilySiblingIds?: string[];
   }) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>;
   
   cancelTransaction: (id: string, reason: string) => Promise<{ success: boolean; error?: string }>;
@@ -118,7 +122,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(true);
 
   // Sync state data to Firestore to guarantee persistent real-time propagation across teachers
   const syncToFirestore = async (stateData?: {
@@ -128,6 +132,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     transactions?: Transaction[];
     auditLogs?: AuditLog[];
   }) => {
+    // Circuit breaker: skip writing to Firestore if quota has been exceeded today
+    if (typeof window !== 'undefined' && (window as any).__firestore_quota_exhausted__) {
+      return;
+    }
+
     try {
       const stateDocRef = doc(db, 'system', 'sk_tudan_state');
       const payload = stateData || {
@@ -140,8 +149,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
       await setDoc(stateDocRef, payload, { merge: true });
       setIsRealtimeConnected(true);
-    } catch {
-      // Offline or network fallback
+    } catch (err: any) {
+      if (
+        err?.code === 'resource-exhausted' ||
+        err?.message?.includes('Quota limit exceeded') ||
+        err?.message?.includes('quota')
+      ) {
+        if (typeof window !== 'undefined') {
+          (window as any).__firestore_quota_exhausted__ = true;
+        }
+        console.warn('Firestore write quota exceeded; switching to backend real-time synchronization.');
+      }
     }
   };
 
@@ -159,8 +177,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
         setIsLoading(false);
-        // Silently sync to Firestore
-        syncToFirestore(data).catch(() => {});
+        // Note: Do NOT call syncToFirestore on read polling, to avoid consuming free daily write quota!
         return;
       }
     } catch {
@@ -186,12 +203,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     loadState();
 
-    // Verify Firestore connection
-    testConnection().then((connected) => {
-      if (connected) setIsRealtimeConnected(true);
-    });
+    // Verify Firestore connection silently
+    testConnection()
+      .then((connected) => {
+        if (connected) setIsRealtimeConnected(true);
+      })
+      .catch(() => {});
 
-    // Firestore Real-Time Listener (onSnapshot): Updates instantly whenever any teacher adds or modifies records
+    // Firestore Real-Time Listener (onSnapshot): Updates instantly whenever records are modified
     let unsubscribeFirestore: (() => void) | null = null;
     try {
       const stateDocRef = doc(db, 'system', 'sk_tudan_state');
@@ -216,19 +235,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (err) => {
-          console.warn('Firestore onSnapshot listener notice:', err.message);
+          if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota')) {
+            if (typeof window !== 'undefined') {
+              (window as any).__firestore_quota_exhausted__ = true;
+            }
+          }
+          console.warn('Firestore real-time sync notification:', err.message);
         }
       );
     } catch (err) {
       console.warn('Could not initialize Firestore onSnapshot listener:', err);
     }
 
-    // Polling and window focus sync fallback
+    // Polling and window focus sync fallback for high-speed multi-teacher synchronization
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         loadState();
       }
-    }, 4000);
+    }, 5000);
 
     const handleFocus = () => {
       loadState();
@@ -268,6 +292,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    // Check if this student is covered by a family PIBG payment via sibling representative
+    let familyPibgTx: Transaction | null = null;
+    let isCoveredByFamilyRep = false;
+
+    // Check if the student themselves paid PIBG directly
+    const directPibgPaid = Array.from(paidPerItem.entries()).some(([itemId, amt]) => {
+      const f = feeItems.find((x) => x.id === itemId);
+      return (f?.name.toLowerCase().includes('pibg') || f?.code === 'PBG') && amt > 0;
+    });
+
+    if (!directPibgPaid) {
+      // Look for a valid transaction where this student is listed in pibgFamilySiblingIds,
+      // or from an explicitly linked sibling/familyId
+      for (const tx of transactions) {
+        if (tx.status !== 'Sah') continue;
+        const hasPibgInTx = tx.items?.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0);
+        if (!hasPibgInTx) continue;
+
+        if (tx.pibgFamilySiblingIds && tx.pibgFamilySiblingIds.includes(studentId)) {
+          familyPibgTx = tx;
+          isCoveredByFamilyRep = true;
+          break;
+        }
+
+        // Also check if tx was made by a known sibling or same familyId
+        const isTxFromSibling =
+          (student.siblingIds && student.siblingIds.includes(tx.studentId)) ||
+          (student.familyId && student.familyId === students.find((s) => s.id === tx.studentId)?.familyId);
+
+        if (isTxFromSibling) {
+          familyPibgTx = tx;
+          isCoveredByFamilyRep = true;
+          break;
+        }
+      }
+    } else {
+      // Student is direct payer. Find if this student has a transaction with PIBG
+      const repTx = validTxs.find((t) => t.items.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0));
+      if (repTx) {
+        familyPibgTx = repTx;
+      }
+    }
+
     const optOutSet = new Set(student.optOutItemIds || []);
     const activeItems = feeItems.filter((f) => f.active);
 
@@ -275,19 +342,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let optedOutCount = 0;
 
     const itemBalances = activeItems.map((item) => {
+      const isPibg = item.name.toLowerCase().includes('pibg') || item.code === 'PBG';
       const paid = paidPerItem.get(item.id) || 0;
       const isOptedOut = optOutSet.has(item.id);
       if (isOptedOut) optedOutCount++;
 
       let remaining = 0;
-      if (!isOptedOut) {
-        totalFeeCents += item.amountCents;
-        remaining = Math.max(0, item.amountCents - paid);
+      let isItemPaid = false;
+      let isPaidViaFamilyRepresentative = false;
+      let familyPibgPaymentInfo = undefined;
+
+      if (isPibg && isCoveredByFamilyRep && familyPibgTx) {
+        // Covered by family representative: ELAKKAN PENGIRAAN BAYARAN BERULANG!
+        isPaidViaFamilyRepresentative = true;
+        isItemPaid = true;
+        remaining = 0;
+        familyPibgPaymentInfo = {
+          representativeStudentId: familyPibgTx.pibgRepresentativeStudentId || familyPibgTx.studentId,
+          representativeStudentName: familyPibgTx.pibgRepresentativeStudentName || familyPibgTx.studentName,
+          representativeClassName: familyPibgTx.pibgRepresentativeClassName || familyPibgTx.studentClass,
+          receiptNumber: familyPibgTx.receiptNumber,
+          transactionId: familyPibgTx.id,
+          paidDate: familyPibgTx.timestampMalaysia || familyPibgTx.timestamp,
+          amountCents: familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents || item.amountCents,
+          notes: familyPibgTx.notes,
+        };
+        // Do not add to totalFeeCents so the sibling does not owe PIBG
       } else {
-        if (paid > 0) {
-          totalFeeCents += paid;
-          remaining = 0;
+        if (!isOptedOut) {
+          totalFeeCents += item.amountCents;
+          remaining = Math.max(0, item.amountCents - paid);
+        } else {
+          if (paid > 0) {
+            totalFeeCents += paid;
+            remaining = 0;
+          }
         }
+        isItemPaid = paid >= item.amountCents || (isOptedOut && remaining === 0);
       }
 
       return {
@@ -296,20 +387,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         rateCents: item.amountCents,
         paidCents: paid,
         remainingCents: remaining,
-        isPaid: paid >= item.amountCents || (isOptedOut && remaining === 0),
+        isPaid: isItemPaid,
         isOptedOut,
+        isPaidViaFamilyRepresentative,
+        familyPibgPaymentInfo,
       };
     });
 
     const balanceCents = Math.max(0, totalFeeCents - totalPaid);
 
     let status: 'Belum Bayar' | 'Bayar Sebahagian' | 'Selesai' = 'Belum Bayar';
-    if (balanceCents === 0 && (totalPaid > 0 || optedOutCount === activeItems.length)) {
+    if (balanceCents === 0 && (totalPaid > 0 || isCoveredByFamilyRep || optedOutCount === activeItems.length)) {
       status = 'Selesai';
     } else if (totalPaid > 0 && balanceCents > 0) {
       status = 'Bayar Sebahagian';
     } else {
       status = 'Belum Bayar';
+    }
+
+    // Linked siblings list
+    const siblingIdsList = student.siblingIds || [];
+    const linkedSiblings = siblingIdsList
+      .map((sId) => students.find((s) => s.id === sId))
+      .filter((s): s is Student => Boolean(s))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        className: s.className,
+        schoolYear: s.schoolYear,
+      }));
+
+    let pibgFamilyPayment = undefined;
+    if (familyPibgTx) {
+      const isRep = (familyPibgTx.pibgRepresentativeStudentId || familyPibgTx.studentId) === studentId;
+      pibgFamilyPayment = {
+        isPaid: true,
+        isRepresentative: isRep,
+        representativeName: familyPibgTx.pibgRepresentativeStudentName || familyPibgTx.studentName,
+        representativeClass: familyPibgTx.pibgRepresentativeClassName || familyPibgTx.studentClass,
+        receiptNumber: familyPibgTx.receiptNumber,
+        transactionId: familyPibgTx.id,
+        paidDate: familyPibgTx.timestampMalaysia || familyPibgTx.timestamp,
+        amountCents: familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents || 2000,
+        notes: familyPibgTx.notes,
+        siblings: familyPibgTx.pibgFamilySiblingNamesWithClasses || [],
+      };
     }
 
     return {
@@ -321,6 +443,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       itemBalances,
       transactionCount: validTxs.length,
       optedOutCount,
+      linkedSiblings,
+      pibgFamilyPayment,
     };
   };
 
@@ -511,6 +635,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // 3b. Update Student Sibling Links
+  const setStudentSiblings = async (studentId: string, siblingIds: string[]) => {
+    try {
+      const res = await fetch(`/api/students/${studentId}/siblings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siblingIds, user: currentUser }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Gagal mengemas kini pautan adik-beradik.' };
+      }
+      await refreshData();
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Ralat komunikasi dengan server.' };
+    }
+  };
+
   // 4. Record Payment
   const recordPayment = async (paymentData: {
     studentId: string;
@@ -523,6 +666,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     amountTenderedCents?: number;
     changeReturnedCents?: number;
     changeReturnedStatus?: 'Sudah Dipulangkan' | 'Belum Dipulangkan' | 'Tiada Baki';
+    isPibgFamilyPayment?: boolean;
+    pibgRepresentativeStudentId?: string;
+    pibgFamilySiblingIds?: string[];
   }) => {
     try {
       const res = await fetch('/api/transactions', {
@@ -749,6 +895,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteStudentsBulk,
         updateStudentOptOutItems,
         importStudents,
+        setStudentSiblings,
         recordPayment,
         cancelTransaction,
         deleteTransaction,

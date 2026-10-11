@@ -19,6 +19,8 @@ export interface Student {
   optOutItemIds?: string[]; // IDs of items parents decided not to buy (e.g. Sedia ada / Tidak diperlukan)
   createdAt: string;
   updatedAt: string;
+  familyId?: string; // ID kumpulan keluarga bagi perkongsian rekod PIBG
+  siblingIds?: string[]; // Senarai ID murid adik-beradik yang bersekolah bersama
 }
 
 export interface PaymentItemAllocation {
@@ -32,9 +34,16 @@ export interface PaymentItemAllocation {
 
 export type PaymentMethod = 'Tunai' | 'Pindahan Bank' | 'Lain-lain';
 
+export interface SiblingInfo {
+  id: string;
+  name: string;
+  className: string;
+  schoolYear?: string;
+}
+
 export interface Transaction {
   id: string;
-  receiptNumber: string; // e.g., SKT/T3/2026/0001
+  receiptNumber: string; // e.g., SKT/2026/0001
   studentId: string;
   studentName: string;
   studentClass: string;
@@ -59,13 +68,20 @@ export interface Transaction {
   cancelledAt?: string;
   printCount: number;
   classTeacherName?: string;
+  // Sumbangan PIBG Mengikut Keluarga
+  isPibgFamilyPayment?: boolean;
+  pibgRepresentativeStudentId?: string;
+  pibgRepresentativeStudentName?: string;
+  pibgRepresentativeClassName?: string;
+  pibgFamilySiblingIds?: string[];
+  pibgFamilySiblingNamesWithClasses?: SiblingInfo[];
 }
 
 export interface AuditLog {
   id: string;
   timestamp: string;
   timestampMalaysia: string;
-  action: 'TAMBAH_BAYARAN' | 'BATAL_BAYARAN' | 'PADAM_BAYARAN' | 'KEMASKINI_BAYARAN' | 'TAMBAH_MURID' | 'KEMASKINI_MURID' | 'IMPORT_MURID' | 'KEMASKINI_KADAR' | 'LOG_MASUK' | 'KEMASKINI_TETAPAN' | 'KEMASKINI_PILIHAN_ITEM' | 'PADAM_MURID' | 'PADAM_MURID_PUKAL';
+  action: 'TAMBAH_BAYARAN' | 'BATAL_BAYARAN' | 'PADAM_BAYARAN' | 'KEMASKINI_BAYARAN' | 'TAMBAH_MURID' | 'KEMASKINI_MURID' | 'IMPORT_MURID' | 'KEMASKINI_KADAR' | 'LOG_MASUK' | 'KEMASKINI_TETAPAN' | 'KEMASKINI_PILIHAN_ITEM' | 'PADAM_MURID' | 'PADAM_MURID_PUKAL' | 'KEMASKINI_KELUARGA';
   performedBy: string;
   role: string;
   details: string;
@@ -105,23 +121,49 @@ export interface CurrentUser {
   email?: string;
 }
 
+export interface ItemBalanceInfo {
+  feeItemId: string;
+  feeItemName: string;
+  rateCents: number;
+  paidCents: number;
+  remainingCents: number;
+  isPaid: boolean;
+  isOptedOut: boolean; // Marked as "Sedia Ada / Tidak Diperlukan"
+  isPaidViaFamilyRepresentative?: boolean; // Telah dibayar melalui wakil keluarga
+  familyPibgPaymentInfo?: {
+    representativeStudentId: string;
+    representativeStudentName: string;
+    representativeClassName: string;
+    receiptNumber: string;
+    transactionId: string;
+    paidDate: string;
+    amountCents: number;
+    notes?: string;
+  };
+}
+
 export interface StudentPaymentSummary {
   student: Student;
   totalFeeCents: number; // Expected total based on items chosen by parent
   paidCents: number;
   balanceCents: number;
   status: 'Belum Bayar' | 'Bayar Sebahagian' | 'Selesai';
-  itemBalances: {
-    feeItemId: string;
-    feeItemName: string;
-    rateCents: number;
-    paidCents: number;
-    remainingCents: number;
-    isPaid: boolean;
-    isOptedOut: boolean; // Marked as "Sedia Ada / Tidak Diperlukan"
-  }[];
+  itemBalances: ItemBalanceInfo[];
   transactionCount: number;
   optedOutCount: number;
+  linkedSiblings?: SiblingInfo[];
+  pibgFamilyPayment?: {
+    isPaid: boolean;
+    isRepresentative: boolean;
+    representativeName: string;
+    representativeClass: string;
+    receiptNumber: string;
+    transactionId: string;
+    paidDate: string;
+    amountCents: number;
+    notes?: string;
+    siblings: SiblingInfo[];
+  };
 }
 
 export interface DashboardStats {
@@ -134,3 +176,4 @@ export interface DashboardStats {
   totalTransactionsCount: number;
   cancelledTransactionsCount: number;
 }
+

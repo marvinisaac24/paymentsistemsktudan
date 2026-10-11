@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student, PaymentMethod, Transaction } from '../types';
 import { formatRM, rmToCents, centsToRM, maskMyKid } from '../utils/currency';
+import { findSuggestedSiblings, generatePibgFamilyNote } from '../utils/family';
 import {
   CreditCard,
   X,
@@ -19,10 +20,17 @@ import {
   Coins,
   Wallet,
   Banknote,
+  Users,
+  UserPlus,
+  Link2,
+  Trash2,
+  Square,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface PaymentModalProps {
   initialStudentId?: string | null;
+  initialAction?: 'photo-5r' | 'photo-8r' | 'photo-pano' | 'photos' | 'all';
   isOpen: boolean;
   onClose: () => void;
   onPaymentSuccess: (transaction: Transaction) => void;
@@ -30,19 +38,32 @@ interface PaymentModalProps {
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
   initialStudentId,
+  initialAction,
   isOpen,
   onClose,
   onPaymentSuccess,
 }) => {
-  const { students, feeItems, getStudentSummary, recordPayment, updateStudentOptOutItems, currentUser } = useApp();
+  const { students, feeItems, getStudentSummary, recordPayment, updateStudentOptOutItems, setStudentSiblings, currentUser } = useApp();
 
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
+    return initialStudentId || (students.length > 0 ? students[0].id : '');
+  });
   const [studentSearch, setStudentSearch] = useState<string>('');
   const [payerName, setPayerName] = useState<string>('');
   const [payerPhone, setPayerPhone] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Tunai');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  // Sumbangan PIBG Mengikut Keluarga & Murid Wakil Pembayaran
+  const [pibgRepStudentId, setPibgRepStudentId] = useState<string>('');
+  const [repSearchInput, setRepSearchInput] = useState<string>('');
+  const [isRepSearchOpen, setIsRepSearchOpen] = useState<boolean>(false);
+  const [linkedSiblingIds, setLinkedSiblingIds] = useState<string[]>([]);
+  const [siblingSearchInput, setSiblingSearchInput] = useState<string>('');
+  const [isSiblingSearchOpen, setIsSiblingSearchOpen] = useState<boolean>(false);
+  const [manualExtraSiblings, setManualExtraSiblings] = useState<Student[]>([]);
+  const [customTeacherNote, setCustomTeacherNote] = useState<string>('');
 
   // Ruang Wang Tunai Diterima & Baki Perlu Dikembalikan Kepada Murid
   const [amountTenderedInput, setAmountTenderedInput] = useState<string>('');
@@ -53,11 +74,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initialize selected student
+  // Synchronize selected student whenever initialStudentId or isOpen changes
   useEffect(() => {
     if (initialStudentId) {
       setSelectedStudentId(initialStudentId);
-    } else if (students.length > 0 && !selectedStudentId) {
+    } else if (!selectedStudentId && students.length > 0) {
       // Pick first student with pending balance
       const pending = students.find((s) => {
         const sum = getStudentSummary(s.id);
@@ -93,12 +114,49 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     if (currentSummary) {
       setPayerName(currentSummary.student.parentName || '');
       setPayerPhone(currentSummary.student.parentPhone || '');
-      setItemInputs({});
+      
+      const newInputs: Record<string, string> = {};
+
+      if (initialAction === 'all') {
+        currentSummary.itemBalances.forEach((it) => {
+          if (it.remainingCents > 0) {
+            newInputs[it.feeItemId] = (it.remainingCents / 100).toFixed(2);
+          }
+        });
+      } else if (initialAction === 'photos') {
+        currentSummary.itemBalances.forEach((it) => {
+          const isPhoto =
+            it.feeItemName.toLowerCase().includes('gambar') ||
+            it.feeItemName.toLowerCase().includes('5r') ||
+            it.feeItemName.toLowerCase().includes('8r') ||
+            it.feeItemName.toLowerCase().includes('panorama');
+          if (isPhoto && it.remainingCents > 0) {
+            newInputs[it.feeItemId] = (it.remainingCents / 100).toFixed(2);
+          }
+        });
+      } else if (initialAction === 'photo-5r') {
+        const item5R = currentSummary.itemBalances.find((it) => it.feeItemName.toLowerCase().includes('5r'));
+        if (item5R && item5R.remainingCents > 0) {
+          newInputs[item5R.feeItemId] = (item5R.remainingCents / 100).toFixed(2);
+        }
+      } else if (initialAction === 'photo-8r') {
+        const item8R = currentSummary.itemBalances.find((it) => it.feeItemName.toLowerCase().includes('8r'));
+        if (item8R && item8R.remainingCents > 0) {
+          newInputs[item8R.feeItemId] = (item8R.remainingCents / 100).toFixed(2);
+        }
+      } else if (initialAction === 'photo-pano') {
+        const itemPano = currentSummary.itemBalances.find((it) => it.feeItemName.toLowerCase().includes('panorama'));
+        if (itemPano && itemPano.remainingCents > 0) {
+          newInputs[itemPano.feeItemId] = (itemPano.remainingCents / 100).toFixed(2);
+        }
+      }
+
+      setItemInputs(newInputs);
       setAmountTenderedInput('');
       setIsChangeReturned(true);
       setErrorMsg('');
     }
-  }, [selectedStudentId]);
+  }, [selectedStudentId, initialAction]);
 
   // Filter students for search dropdown
   const filteredStudents = students.filter((s) => {
@@ -110,6 +168,96 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       (s.myKid && s.myKid.includes(q))
     );
   });
+
+  // PIBG Fee Item identification
+  const pibgFeeItem = useMemo(() => {
+    return feeItems.find((f) => f.name.toLowerCase().includes('pibg') || f.code === 'PBG');
+  }, [feeItems]);
+
+  const effectiveRepStudentId = pibgRepStudentId || selectedStudentId;
+  const repStudent = useMemo(() => {
+    return students.find((s) => s.id === effectiveRepStudentId) || currentSummary?.student;
+  }, [students, effectiveRepStudentId, currentSummary]);
+
+  // Detected family members for the representative
+  const familyInfo = useMemo(() => {
+    if (!repStudent) return { alreadyLinked: [], suggestedByGuardian: [], allFamilyMembers: [] };
+    const res = findSuggestedSiblings(repStudent, students);
+    const all = [...res.allFamilyMembers];
+    for (const extra of manualExtraSiblings) {
+      if (!all.some((s) => s.id === extra.id) && extra.id !== repStudent.id) {
+        all.push(extra);
+      }
+    }
+    return {
+      alreadyLinked: res.alreadyLinked,
+      suggestedByGuardian: res.suggestedByGuardian,
+      allFamilyMembers: all,
+    };
+  }, [repStudent, students, manualExtraSiblings]);
+
+  // Synchronize default linked siblings when familyInfo changes
+  useEffect(() => {
+    if (familyInfo.allFamilyMembers.length > 0) {
+      setLinkedSiblingIds((prev) => {
+        const next = new Set(prev);
+        familyInfo.allFamilyMembers.forEach((s) => next.add(s.id));
+        return Array.from(next);
+      });
+    }
+  }, [familyInfo]);
+
+  // Reset representative and extra siblings when main student changes
+  useEffect(() => {
+    setPibgRepStudentId(selectedStudentId);
+    setManualExtraSiblings([]);
+    setRepSearchInput('');
+    setSiblingSearchInput('');
+  }, [selectedStudentId]);
+
+  // Search suggestions for Representative student
+  const filteredRepSuggestions = useMemo(() => {
+    const q = repSearchInput.toLowerCase().trim();
+    if (!q) return [];
+    return students
+      .filter((s) => s.name.toLowerCase().includes(q) || s.className.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [repSearchInput, students]);
+
+  // Search suggestions for Siblings to link from any class
+  const filteredSiblingSuggestions = useMemo(() => {
+    const q = siblingSearchInput.toLowerCase().trim();
+    if (!q) return [];
+    const repId = effectiveRepStudentId;
+    return students
+      .filter(
+        (s) =>
+          s.id !== repId &&
+          !linkedSiblingIds.includes(s.id) &&
+          (s.name.toLowerCase().includes(q) || s.className.toLowerCase().includes(q))
+      )
+      .slice(0, 8);
+  }, [siblingSearchInput, students, effectiveRepStudentId, linkedSiblingIds]);
+
+  const isPibgBeingPaid = Boolean(
+    pibgFeeItem &&
+    itemInputs[pibgFeeItem.id] &&
+    rmToCents(itemInputs[pibgFeeItem.id]) > 0
+  );
+
+  const todayFormatted = useMemo(() => {
+    return new Intl.DateTimeFormat('ms-MY', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  }, []);
+
+  const autoGeneratedNote = useMemo(() => {
+    if (!repStudent) return '';
+    return generatePibgFamilyNote(repStudent.name, repStudent.className, todayFormatted, '[Dijana Secara Automatik]');
+  }, [repStudent, todayFormatted]);
 
   const handleInputChange = (feeItemId: string, val: string) => {
     // Allow numbers and decimal point only
@@ -247,6 +395,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         currentPaymentCents: rmToCents(itemInputs[item.feeItemId]),
       }));
 
+    // Check if Sumbangan PIBG is included in this payment
+    const isPibgInPayload = itemsPayload.some((it) => {
+      const f = feeItems.find((x) => x.id === it.feeItemId);
+      return f?.name.toLowerCase().includes('pibg') || f?.code === 'PBG';
+    });
+
+    const repStudentFinal = repStudent || currentSummary.student;
+    const validSiblingsToLink = linkedSiblingIds.filter((id) => id && id !== repStudentFinal.id);
+
+    let finalNotes = notes.trim();
+    if (isPibgInPayload) {
+      const autoNote = `Sumbangan PIBG keluarga telah dibayar melalui ${repStudentFinal.name}, kelas ${repStudentFinal.className}, pada ${todayFormatted}.`;
+      finalNotes = customTeacherNote.trim()
+        ? `${autoNote} ${customTeacherNote.trim()}`
+        : autoNote;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -258,7 +423,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         items: itemsPayload,
         paymentMethod,
         referenceNumber: referenceNumber.trim(),
-        notes: notes.trim(),
+        notes: finalNotes,
         amountTenderedCents: effectiveTenderedCents,
         changeReturnedCents: changeReturnedCents,
         changeReturnedStatus:
@@ -267,12 +432,20 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               ? 'Sudah Dipulangkan'
               : 'Belum Dipulangkan'
             : 'Tiada Baki',
+        isPibgFamilyPayment: isPibgInPayload,
+        pibgRepresentativeStudentId: isPibgInPayload ? repStudentFinal.id : undefined,
+        pibgFamilySiblingIds: isPibgInPayload ? validSiblingsToLink : undefined,
       });
 
       if (!result.success || !result.transaction) {
         setErrorMsg(result.error || 'Gagal merekod bayaran.');
         setIsSubmitting(false);
         return;
+      }
+
+      // If family siblings were selected, ensure sibling links are permanently updated
+      if (isPibgInPayload && validSiblingsToLink.length > 0) {
+        await setStudentSiblings(repStudentFinal.id, validSiblingsToLink);
       }
 
       onClose();
@@ -331,22 +504,34 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {/* Student Selector Card */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-              <div>
+              <div className="flex-1">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Pilih Murid:
+                  Pilih Murid ({students.length} berdaftar):
                 </label>
-                <div className="relative w-full sm:w-80">
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden cursor-pointer"
-                  >
-                    {students.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.className})
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                  <div className="relative w-full sm:w-56">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Cari murid / kelas / MyKid..."
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    />
+                  </div>
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedStudentId}
+                      onChange={(e) => setSelectedStudentId(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden cursor-pointer"
+                    >
+                      {filteredStudents.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.className})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -398,8 +583,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
-          {/* Fee Items Allocation Table */}
-          <div>
+          {!currentSummary ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center text-xs text-amber-800">
+              <AlertCircle className="w-6 h-6 text-amber-600 mx-auto mb-2" />
+              <p className="font-bold text-sm">Tiada Murid Dipilih</p>
+              <p className="text-slate-600 mt-1">Sila pilih murid daripada menu pilihan di atas untuk memaparkan butiran dan rekod bayaran.</p>
+            </div>
+          ) : (
+            /* Fee Items Allocation Table */
+            <div>
             {/* Optional Items Notice */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-3 flex items-start space-x-2 text-xs text-emerald-900">
               <AlertCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -701,6 +893,292 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
             </div>
           </div>
+          )}
+
+          {/* DEDICATED SECTION: SUMBANGAN PIBG MENGIKUT KELUARGA & WAKIL PEMBAYARAN */}
+          {pibgFeeItem && (
+            <div className={`rounded-2xl border-2 transition p-4 sm:p-5 space-y-4 ${
+              isPibgBeingPaid
+                ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border-emerald-400 shadow-md ring-2 ring-emerald-200'
+                : 'bg-slate-50 border-slate-300'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs ${
+                    isPibgBeingPaid ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-200'
+                  }`}>
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h4 className="text-sm font-black text-slate-900">
+                        Sumbangan PIBG Mengikut Keluarga
+                      </h4>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        isPibgBeingPaid
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        1 Bayaran = Semua Adik-Beradik
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Direkodkan melalui seorang murid wakil dan dikaitkan dengan semua adik-beradik tanpa bayaran berulang.
+                    </p>
+                  </div>
+                </div>
+
+                {!isPibgBeingPaid ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (pibgFeeItem) {
+                        setItemInputs((prev) => ({
+                          ...prev,
+                          [pibgFeeItem.id]: (pibgFeeItem.amountCents / 100).toFixed(2),
+                        }));
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center space-x-1"
+                  >
+                    <span>+ Rekod Bayaran PIBG Keluarga (RM 20.00)</span>
+                  </button>
+                ) : (
+                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-xl">
+                    ✓ Mod Bayaran Keluarga Aktif ({formatRM(rmToCents(itemInputs[pibgFeeItem.id] || '0'))})
+                  </span>
+                )}
+              </div>
+
+              {/* 1. Carian Nama Murid Wakil Pembayaran Secara Automatik */}
+              <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs space-y-2">
+                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <User className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Catatan / Murid Wakil Pembayaran:</span>
+                  </span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    Menaip nama murid untuk cadangan automatik berserta kelas
+                  </span>
+                </label>
+
+                <div className="relative">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={repSearchInput}
+                        onChange={(e) => {
+                          setRepSearchInput(e.target.value);
+                          setIsRepSearchOpen(true);
+                        }}
+                        onFocus={() => setIsRepSearchOpen(true)}
+                        placeholder="Taip nama murid wakil (sistem memaparkan cadangan automatik)..."
+                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                      />
+                    </div>
+                    {repStudent && (
+                      <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-1.5 text-xs flex items-center space-x-2 shrink-0">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="text-emerald-800 font-bold block text-[10px] uppercase">Wakil Dipilih:</span>
+                          <span className="font-black text-emerald-950 text-xs">
+                            {repStudent.name} ({repStudent.className})
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Autocomplete Suggestions Dropdown */}
+                  {isRepSearchOpen && repSearchInput.trim().length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+                      {filteredRepSuggestions.length === 0 ? (
+                        <p className="p-3 text-xs text-slate-500 italic">Tiada murid ditemui bagi "{repSearchInput}".</p>
+                      ) : (
+                        filteredRepSuggestions.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setPibgRepStudentId(s.id);
+                              setRepSearchInput('');
+                              setIsRepSearchOpen(false);
+                              if (s.parentName && !payerName) setPayerName(s.parentName);
+                              if (s.parentPhone && !payerPhone) setPayerPhone(s.parentPhone);
+                            }}
+                            className="w-full p-2.5 text-left text-xs hover:bg-emerald-50 transition flex items-center justify-between cursor-pointer"
+                          >
+                            <div>
+                              <span className="font-bold text-slate-900 block">{s.name}</span>
+                              <span className="text-[11px] text-slate-500">Penjaga: {s.parentName || '-'}</span>
+                            </div>
+                            <span className="bg-slate-100 text-slate-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                              {s.className}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Pautan Ahli Keluarga & Adik-Beradik */}
+              <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Pautan Ahli Keluarga & Adik-Beradik (Termasuk Kelas Lain):</span>
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {familyInfo.allFamilyMembers.length} adik-beradik dikesan / terpaut
+                  </span>
+                </div>
+
+                {/* Sibling Checklist */}
+                {familyInfo.allFamilyMembers.length === 0 ? (
+                  <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3 text-center text-xs text-slate-500">
+                    Tiada adik-beradik lain dikesan secara automatik berdasarkan nama penjaga. Sila gunakan ruangan carian di bawah untuk memautkan adik-beradik daripada mana-mana kelas:
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {familyInfo.allFamilyMembers.map((sib) => {
+                      const isChecked = linkedSiblingIds.includes(sib.id);
+                      const sibSummary = getStudentSummary(sib.id);
+                      const isAlreadyPaid = sibSummary?.itemBalances.find(i => i.feeItemName.toLowerCase().includes('pibg'))?.isPaid;
+
+                      return (
+                        <div
+                          key={sib.id}
+                          className={`p-2.5 rounded-xl border transition flex items-center justify-between text-xs ${
+                            isChecked
+                              ? 'bg-emerald-50/70 border-emerald-300 shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 overflow-hidden">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setLinkedSiblingIds((prev) => [...prev, sib.id]);
+                                } else {
+                                  setLinkedSiblingIds((prev) => prev.filter((id) => id !== sib.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer shrink-0"
+                            />
+                            <div className="truncate">
+                              <span className="font-bold text-slate-900 block truncate">{sib.name}</span>
+                              <div className="flex items-center space-x-1.5 text-[10px] text-slate-500">
+                                <span className="font-semibold text-slate-700 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                                  {sib.className}
+                                </span>
+                                <span>•</span>
+                                <span className={isAlreadyPaid ? 'text-emerald-700 font-bold' : 'text-amber-700'}>
+                                  {isAlreadyPaid ? 'Sedia Lunas' : 'Belum Bayar PIBG'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLinkedSiblingIds((prev) => prev.filter((id) => id !== sib.id));
+                              setManualExtraSiblings((prev) => prev.filter((s) => s.id !== sib.id));
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-600 transition cursor-pointer shrink-0 ml-1"
+                            title="Buang pautan murid ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Search & Add New Sibling Across All Classes */}
+                <div className="pt-2 border-t border-slate-100 relative">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={siblingSearchInput}
+                      onChange={(e) => {
+                        setSiblingSearchInput(e.target.value);
+                        setIsSiblingSearchOpen(true);
+                      }}
+                      onFocus={() => setIsSiblingSearchOpen(true)}
+                      placeholder="Cari murid daripada kelas lain untuk dipautkan sebagai adik-beradik..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {isSiblingSearchOpen && siblingSearchInput.trim().length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-xl shadow-xl max-h-44 overflow-y-auto divide-y divide-slate-100">
+                      {filteredSiblingSuggestions.length === 0 ? (
+                        <p className="p-3 text-xs text-slate-500 italic">Tiada murid ditemui bagi carian ini.</p>
+                      ) : (
+                        filteredSiblingSuggestions.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              if (!manualExtraSiblings.some((m) => m.id === s.id)) {
+                                setManualExtraSiblings((prev) => [...prev, s]);
+                              }
+                              if (!linkedSiblingIds.includes(s.id)) {
+                                setLinkedSiblingIds((prev) => [...prev, s.id]);
+                              }
+                              setSiblingSearchInput('');
+                              setIsSiblingSearchOpen(false);
+                            }}
+                            className="w-full p-2 text-left text-xs hover:bg-emerald-50 transition flex items-center justify-between cursor-pointer"
+                          >
+                            <div>
+                              <span className="font-bold text-slate-900">{s.name}</span>
+                              <span className="text-[11px] text-slate-500 block">Penjaga: {s.parentName || '-'}</span>
+                            </div>
+                            <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px]">
+                              + Pautkan ({s.className})
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Catatan Automatik Bagi Rekod Semua Adik-Beradik */}
+              <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs space-y-2">
+                <label className="text-xs font-bold text-slate-800 block">
+                  Catatan Automatik Rekod Semua Adik-Beradik (Dijana Sistem):
+                </label>
+                <div className="p-2.5 bg-emerald-50/90 border border-emerald-300 rounded-lg text-xs text-emerald-950 font-medium">
+                  <p className="italic">"{autoGeneratedNote}"</p>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    Catatan Tambahan Guru (Pilihan):
+                  </label>
+                  <input
+                    type="text"
+                    value={customTeacherNote}
+                    onChange={(e) => setCustomTeacherNote(e.target.value)}
+                    placeholder="Contoh: Disahkan oleh guru kelas / Salinan resit diserahkan"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Payment Details & Payer Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
