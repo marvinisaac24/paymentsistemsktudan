@@ -213,6 +213,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     };
   }, [repStudent, students, manualExtraSiblings]);
 
+  const familyMemberIdsKey = useMemo(() => {
+    return familyInfo.allFamilyMembers.map((s) => s.id).sort().join(',');
+  }, [familyInfo.allFamilyMembers]);
+
   // Synchronize default linked siblings whenever familyInfo or repStudent changes
   useEffect(() => {
     if (familyInfo.allFamilyMembers.length > 0) {
@@ -220,7 +224,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     } else {
       setLinkedSiblingIds([]);
     }
-  }, [familyInfo.allFamilyMembers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyMemberIdsKey]);
 
   // Reset representative and extra siblings when main student changes
   useEffect(() => {

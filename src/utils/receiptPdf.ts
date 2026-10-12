@@ -681,21 +681,49 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   doc.setTextColor(100, 116, 139);
   doc.text(`Jawatan: Guru Kelas (${transaction.studentClass})`, midSigX, curY + 28);
 
-  // 3. Petugas Penerima
+  // 3. Guru / Pegawai Penandatangan & Cop
+  let sigName = config.receiptSignatoryName || config.adminName || 'LIM AI GIOK';
+  let sigTitle = config.receiptSignatoryTitle || 'Guru Besar';
+  if (config.receiptSignatoryMode === 'class_teacher') {
+    sigName = classTeacherName;
+    sigTitle = `Guru Kelas (${transaction.studentClass})`;
+  } else if (config.receiptSignatoryMode === 'recorder') {
+    sigName = transaction.recordedBy;
+    sigTitle = transaction.userRole || 'Petugas Yuran';
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text('Tandatangan & Cop Petugas:', rightSigX, curY + 4);
+  doc.text('Tandatangan & Cop Rasmi:', rightSigX, curY + 4);
+
+  // Digital stamp image if configured
+  if (config.receiptStampBase64 && config.receiptStampBase64.startsWith('data:image')) {
+    try {
+      const stampFmt = (config.receiptStampBase64.includes('image/jpeg') || config.receiptStampBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.receiptStampBase64, stampFmt, rightSigX + 32, curY + 5, 16, 16);
+    } catch {}
+  }
+
+  // Digital signature image if configured
+  if (config.receiptSignatureBase64 && config.receiptSignatureBase64.startsWith('data:image')) {
+    try {
+      const sigFmt = (config.receiptSignatureBase64.includes('image/jpeg') || config.receiptSignatureBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.receiptSignatureBase64, sigFmt, rightSigX + 6, curY + 7, 26, 11);
+    } catch {}
+  }
+
   doc.setDrawColor(148, 163, 184);
   doc.setLineWidth(0.3);
   doc.line(rightSigX, curY + 20, rightSigX + sigBoxWidth, curY + 20);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Nama: ${transaction.recordedBy}`, rightSigX, curY + 24);
+  const truncSig = sigName.length > 25 ? sigName.substring(0, 23) + '..' : sigName;
+  doc.text(`( ${truncSig} )`, rightSigX, curY + 24);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Jawatan: ${transaction.userRole || 'Petugas Yuran'}`, rightSigX, curY + 28);
+  doc.text(sigTitle, rightSigX, curY + 28);
 
   // --- Page Number & Verification Stamp at bottom ---
   const bottomY = 286;
@@ -1040,9 +1068,40 @@ function renderReceiptHalf(doc: jsPDF, ctx: ReceiptHalfContext) {
   doc.setTextColor(4, 120, 87);
   doc.text(`Guru Kelas: ${truncTeacherComb}`, sMidX, curY + 12.5);
 
-  // Right signature (Penerima)
+  // Right signature (Penandatangan & Cop)
+  let sigNameComb = config.receiptSignatoryName || config.adminName || 'LIM AI GIOK';
+  let sigTitleComb = config.receiptSignatoryTitle || 'Guru Besar';
+  if (config.receiptSignatoryMode === 'class_teacher') {
+    sigNameComb = classTeacherName;
+    sigTitleComb = `Guru Kelas (${transaction.studentClass})`;
+  } else if (config.receiptSignatoryMode === 'recorder') {
+    sigNameComb = transaction.recordedBy;
+    sigTitleComb = transaction.userRole || 'Petugas Yuran';
+  }
+
+  // Stamp in compact copy
+  if (config.receiptStampBase64 && config.receiptStampBase64.startsWith('data:image')) {
+    try {
+      const stampFmt = (config.receiptStampBase64.includes('image/jpeg') || config.receiptStampBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.receiptStampBase64, stampFmt, s2X + 34, curY + 1, 12, 12);
+    } catch {}
+  }
+  // Signature in compact copy
+  if (config.receiptSignatureBase64 && config.receiptSignatureBase64.startsWith('data:image')) {
+    try {
+      const sigFmt = (config.receiptSignatureBase64.includes('image/jpeg') || config.receiptSignatureBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(config.receiptSignatureBase64, sigFmt, s2X + 6, curY + 2, 22, 7.5);
+    } catch {}
+  }
+
   doc.line(s2X, curY + 9.5, s2X + sigW, curY + 9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.setTextColor(15, 23, 42);
+  const truncComb = sigNameComb.length > 22 ? sigNameComb.substring(0, 20) + '..' : sigNameComb;
+  doc.text(`( ${truncComb} )`, s2X, curY + 12.5);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Tandatangan & Cop: ${transaction.recordedBy}`, s2X, curY + 12.5);
+  doc.setFontSize(6.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`${sigTitleComb} • Cop Rasmi`, s2X, curY + 15.5);
 }

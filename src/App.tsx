@@ -60,6 +60,8 @@ const MainContent: React.FC = () => {
         schoolName={config.schoolName}
         schoolCode={config.schoolCode}
         adminName={config.adminName || 'LIM AI GIOK'}
+        logoBase64={config.logoBase64}
+        schoolYear={config.currentSchoolYear}
       />
     );
   }

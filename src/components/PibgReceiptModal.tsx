@@ -26,6 +26,18 @@ const SinglePibgReceiptBlock: React.FC<SinglePibgBlockProps> = ({ copyTitle, tra
   const pibgAmountCents = pibgItem ? pibgItem.currentPaymentCents : 2000;
   const recordedBy = transaction.recordedBy || 'Guru / Petugas PIBG';
 
+  // Signatory name and designation based on configuration in Tetapan
+  let signatoryName = config.receiptSignatoryName || config.adminName || 'LIM AI GIOK';
+  let signatoryTitle = config.receiptSignatoryTitle || 'Bendahari PIBG';
+
+  if (config.receiptSignatoryMode === 'class_teacher') {
+    signatoryName = transaction.classTeacherName || config.classTeachers?.[transaction.studentClass] || 'Guru Kelas';
+    signatoryTitle = `Guru Kelas (${transaction.studentClass})`;
+  } else if (config.receiptSignatoryMode === 'recorder') {
+    signatoryName = transaction.recordedBy;
+    signatoryTitle = transaction.userRole || 'Penerima PIBG';
+  }
+
   return (
     <div className="pibg-single-block border border-slate-300 rounded-xl p-4 sm:p-5 bg-white text-slate-900 font-sans text-xs shadow-xs relative">
       {/* Top Header & Copy Badge */}
@@ -200,18 +212,36 @@ const SinglePibgReceiptBlock: React.FC<SinglePibgBlockProps> = ({ copyTitle, tra
       {/* Signatures */}
       <div className="grid grid-cols-2 gap-8 pt-3 border-t border-slate-200 text-center text-xs">
         <div>
-          <div className="h-9"></div>
-          <div className="border-t border-slate-400 pt-1 font-bold text-slate-900">
-            ( {recordedBy} )
+          <div className="h-12 relative flex items-center justify-center">
+            {config.receiptStampBase64 && (
+              <img
+                src={config.receiptStampBase64}
+                alt="Cop Rasmi"
+                className="absolute -top-3 left-6 w-16 h-16 object-contain pointer-events-none opacity-85 mix-blend-multiply rotate-[-6deg]"
+              />
+            )}
+            {config.receiptSignatureBase64 ? (
+              <img
+                src={config.receiptSignatureBase64}
+                alt="Tandatangan"
+                className="relative z-10 max-h-11 max-w-[130px] object-contain"
+              />
+            ) : (
+              <div className="h-6"></div>
+            )}
           </div>
-          <span className="text-[10px] text-slate-500">Tandatangan / Cop Penerima PIBG</span>
+          <div className="border-t border-slate-400 pt-1 font-bold text-slate-900">
+            ( {signatoryName} )
+          </div>
+          <span className="text-[10.5px] text-slate-700 font-semibold block">{signatoryTitle}</span>
+          <span className="text-[9.5px] text-slate-500 block">Tandatangan & Cop Penerima PIBG</span>
         </div>
         <div>
-          <div className="h-9"></div>
+          <div className="h-12"></div>
           <div className="border-t border-slate-400 pt-1 font-bold text-slate-900">
             ( {transaction.payerName || 'Ibu Bapa / Penjaga'} )
           </div>
-          <span className="text-[10px] text-slate-500">Tandatangan Ibu Bapa / Penjaga</span>
+          <span className="text-[10px] text-slate-500 block">Tandatangan Ibu Bapa / Penjaga</span>
         </div>
       </div>
     </div>

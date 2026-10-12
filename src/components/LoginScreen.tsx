@@ -23,12 +23,16 @@ interface LoginScreenProps {
   schoolName: string;
   schoolCode: string;
   adminName: string;
+  logoBase64?: string;
+  schoolYear?: string;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   schoolName,
   schoolCode,
   adminName,
+  logoBase64,
+  schoolYear,
 }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -128,14 +132,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       
       {/* Top Identity Card */}
       <div className="w-full max-w-md text-center mb-6">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/40 border border-emerald-400/40 mb-3.5">
-          <School className="w-9 h-9" />
-        </div>
+        {logoBase64 ? (
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white p-2 shadow-2xl shadow-emerald-950/50 border-2 border-emerald-500/40 mb-3.5">
+            <img
+              src={logoBase64}
+              alt="Logo Sekolah"
+              className="w-full h-full object-contain"
+            />
+          </div>
+        ) : (
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/40 border border-emerald-400/40 mb-3.5">
+            <School className="w-9 h-9" />
+          </div>
+        )}
         <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
           {schoolName}
         </h1>
         <p className="text-xs sm:text-sm font-medium text-emerald-400 mt-1">
-          Sistem Rekod Pembayaran Yuran & Keperluan Persekolahan ({schoolCode})
+          Sistem Rekod Pembayaran Yuran & Keperluan Persekolahan ({schoolCode}){schoolYear ? ` • Sesi ${schoolYear}` : ''}
         </p>
         <div className="mt-2 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-300">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />

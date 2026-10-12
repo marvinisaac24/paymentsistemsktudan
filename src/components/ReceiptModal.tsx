@@ -34,6 +34,18 @@ const SingleReceiptBlock: React.FC<SingleReceiptProps> = ({
 
   const logoSrc = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
 
+  // Signatory name and designation based on configuration in Tetapan
+  let signatoryName = config.receiptSignatoryName || config.adminName || 'LIM AI GIOK';
+  let signatoryTitle = config.receiptSignatoryTitle || 'Guru Besar';
+
+  if (config.receiptSignatoryMode === 'class_teacher') {
+    signatoryName = classTeacherName;
+    signatoryTitle = `Guru Kelas (${transaction.studentClass})`;
+  } else if (config.receiptSignatoryMode === 'recorder') {
+    signatoryName = transaction.recordedBy;
+    signatoryTitle = transaction.userRole || 'Petugas Yuran';
+  }
+
   return (
     <div className="receipt-single-block border border-slate-300 rounded-lg p-4 sm:p-5 bg-white text-slate-900 font-sans text-xs relative">
       {/* Top Header & Copy Badge */}
@@ -186,25 +198,61 @@ const SingleReceiptBlock: React.FC<SingleReceiptProps> = ({
           <p className="italic text-slate-500 text-[11px]">
             * Resit cetakan komputer rasmi SK Tudan. Bukti sah pembayaran.
           </p>
-          <div className="mt-5 pt-1 border-t border-slate-300 w-40">
+          <div className="mt-5 pt-1 border-t border-slate-300 w-36 sm:w-40">
             <span className="block font-semibold">Tandatangan Pembayar</span>
+            <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
+              {transaction.payerName || 'Ibu Bapa / Penjaga'}
+            </span>
           </div>
         </div>
 
-        <div className="text-center">
-          <div className="mt-5 pt-1 border-t border-slate-300 w-48">
-            <span className="font-bold text-slate-800 block text-xs">Guru Kelas</span>
-            <span className="text-xs text-emerald-800 font-bold block truncate">{classTeacherName}</span>
-            <span className="text-[10px] text-slate-400 block">(Tandatangan & Cop)</span>
+        {/* Guru Kelas Signature Block (optional based on setting) */}
+        {config.showTeacherSignature !== false && config.receiptSignatoryMode !== 'class_teacher' && (
+          <div className="text-center">
+            <div className="mt-5 pt-1 border-t border-slate-300 w-44 sm:w-48">
+              <span className="font-bold text-slate-800 block text-xs">Guru Kelas</span>
+              <span className="text-xs text-emerald-800 font-bold block truncate">{classTeacherName}</span>
+              <span className="text-[10px] text-slate-400 block">(Tandatangan & Cop)</span>
+            </div>
           </div>
-        </div>
+        )}
 
+        {/* Configured Signatory & Official Stamp Block */}
         <div className="text-right">
-          <p className="font-bold text-slate-800 text-xs">
-            Diterima Oleh: {transaction.recordedBy}
-          </p>
-          <div className="mt-5 pt-1 border-t border-slate-300 w-40 ml-auto">
-            <span className="block font-semibold">Tandatangan Petugas</span>
+          <div className="relative inline-block text-center min-w-[160px] sm:min-w-[180px]">
+            {/* Signature & Stamp Overlay Container */}
+            <div className="h-12 relative flex items-center justify-center">
+              {config.showSignatureStampOnReceipt !== false && config.receiptStampBase64 && (
+                <img
+                  src={config.receiptStampBase64}
+                  alt="Cop Rasmi"
+                  className="absolute -top-3 right-0 w-16 h-16 object-contain pointer-events-none opacity-85 mix-blend-multiply rotate-[-6deg]"
+                />
+              )}
+              {config.showSignatureStampOnReceipt !== false && config.receiptSignatureBase64 ? (
+                <img
+                  src={config.receiptSignatureBase64}
+                  alt="Tandatangan"
+                  className="relative z-10 max-h-11 max-w-[130px] object-contain"
+                />
+              ) : (
+                <div className="h-6"></div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-400 pt-1">
+              <span className="font-bold text-slate-900 block text-xs">
+                ( {signatoryName} )
+              </span>
+              <span className="text-[10.5px] text-slate-700 font-semibold block">
+                {signatoryTitle}
+              </span>
+              {config.receiptStampText && (
+                <span className="text-[9px] text-slate-400 block italic leading-tight">
+                  {config.receiptStampText}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

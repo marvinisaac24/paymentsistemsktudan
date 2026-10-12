@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 import { db, auth, testConnection } from '../firebase';
@@ -145,59 +145,86 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(true);
 
-  // Monitor Firebase Authentication State
+  const prevAuthUidRef = useRef<string | null | undefined>(undefined);
+
+  // Monitor Firebase Authentication State (single listener, no circular dependencies)
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
       setIsAuthChecking(false);
 
-      // Re-load latest database records whenever user auth status changes or switches accounts
-      loadState();
-
-      if (user && user.email) {
-        const emailLower = user.email.toLowerCase();
-        const displayName = user.displayName || user.email.split('@')[0];
-
-        // Determine role:
-        // Guru Besar / Pentadbir: if email contains admin / lim / gurubesar or matches admin config
-        const isAdmin =
-          emailLower.includes('admin') ||
-          emailLower.includes('gurubesar') ||
-          emailLower.includes('limaigiok') ||
-          emailLower.includes('yba4111') ||
-          emailLower.includes('marvinisaac24'); // User developer / administrator email
-
-        // Check if teacher name corresponds to any class teacher
-        let teacherClass = '';
-        if (config.classTeachers) {
-          for (const [cls, teacherName] of Object.entries(config.classTeachers)) {
-            if (
-              displayName.toLowerCase().includes(teacherName.toLowerCase()) ||
-              teacherName.toLowerCase().includes(displayName.toLowerCase())
-            ) {
-              teacherClass = cls;
-              break;
-            }
-          }
-        }
-
-        const formattedName = user.displayName || displayName.toUpperCase();
-
-        setCurrentUser({
-          name: isAdmin ? (config.adminName ? `${config.adminName} (${config.adminTitle || 'Guru Besar'})` : formattedName) : formattedName,
-          role: isAdmin ? 'Pentadbir' : 'Guru/Petugas',
-          email: user.email,
-          uid: user.uid,
-          photoURL: user.photoURL || undefined,
-          assignedClass: teacherClass || undefined,
-        });
+      if (user) {
+        loadState();
       }
+      prevAuthUidRef.current = user ? user.uid : null;
     });
 
     return () => {
       unsubscribeAuth();
     };
-  }, [config.adminName, config.adminTitle, config.classTeachers]);
+  }, []);
+
+  // Synchronize active currentUser details with authUser and config without re-subscribing auth
+  useEffect(() => {
+    if (authUser && authUser.email) {
+      const emailLower = authUser.email.toLowerCase();
+      const displayName = authUser.displayName || authUser.email.split('@')[0];
+
+      // Determine role:
+      const isHardcodedAdmin =
+        emailLower.includes('admin') ||
+        emailLower.includes('gurubesar') ||
+        emailLower.includes('limaigiok') ||
+        emailLower.includes('yba4111') ||
+        emailLower.includes('marvinisaac24');
+
+      const isInAdminList = config.adminList?.some(
+        (a) => a.email && a.email.toLowerCase() === emailLower
+      );
+
+      const isAdmin = isHardcodedAdmin || Boolean(isInAdminList);
+
+      // Check if teacher name corresponds to any class teacher
+      let teacherClass = '';
+      if (config.classTeachers) {
+        for (const [cls, teacherName] of Object.entries(config.classTeachers)) {
+          if (
+            displayName.toLowerCase().includes(teacherName.toLowerCase()) ||
+            teacherName.toLowerCase().includes(displayName.toLowerCase())
+          ) {
+            teacherClass = cls;
+            break;
+          }
+        }
+      }
+
+      const formattedName = authUser.displayName || displayName.toUpperCase();
+      const targetName = isAdmin
+        ? (config.adminName ? `${config.adminName} (${config.adminTitle || 'Guru Besar'})` : formattedName)
+        : formattedName;
+      const targetRole = isAdmin ? 'Pentadbir' : 'Guru/Petugas';
+
+      setCurrentUser((prev) => {
+        if (
+          prev.email === authUser.email &&
+          prev.name === targetName &&
+          prev.role === targetRole &&
+          prev.assignedClass === (teacherClass || undefined) &&
+          prev.uid === authUser.uid
+        ) {
+          return prev;
+        }
+        return {
+          name: targetName,
+          role: targetRole,
+          email: authUser.email || undefined,
+          uid: authUser.uid,
+          photoURL: authUser.photoURL || undefined,
+          assignedClass: teacherClass || undefined,
+        };
+      });
+    }
+  }, [authUser, config.adminName, config.adminTitle, config.classTeachers]);
 
   const logout = async () => {
     try {
@@ -377,24 +404,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const data = snapshot.data();
             if (data) {
               setIsRealtimeConnected(true);
-              setTransactions((prevTx) => {
-                if (Array.isArray(data.transactions) && data.transactions.length >= prevTx.length) {
-                  return data.transactions as Transaction[];
-                }
-                return prevTx;
-              });
-              setStudents((prevStd) => {
-                if (Array.isArray(data.students) && data.students.length >= prevStd.length) {
-                  return data.students as Student[];
-                }
-                return prevStd;
-              });
+              if (Array.isArray(data.transactions)) {
+                setTransactions(data.transactions as Transaction[]);
+              }
+              if (Array.isArray(data.students)) {
+                setStudents(data.students as Student[]);
+              }
               if (data.config) {
                 setConfig((prev) => ({
-                  ...prev,
                   ...data.config,
+                  ...prev,
                   // Never wipe out existing logo with empty value from state doc
-                  logoBase64: data.config.logoBase64 || prev.logoBase64 || '',
+                  logoBase64: prev.logoBase64 || data.config.logoBase64 || '',
+                  // Retain custom signatory attributes if state summary doc did not include them
+                  receiptSignatoryName: prev.receiptSignatoryName || data.config.receiptSignatoryName,
+                  receiptSignatoryTitle: prev.receiptSignatoryTitle || data.config.receiptSignatoryTitle,
+                  receiptSignatoryMode: prev.receiptSignatoryMode || data.config.receiptSignatoryMode,
+                  receiptStampBase64: prev.receiptStampBase64 || data.config.receiptStampBase64,
+                  receiptSignatureBase64: prev.receiptSignatureBase64 || data.config.receiptSignatureBase64,
+                  receiptStampText: prev.receiptStampText || data.config.receiptStampText,
                 }));
               }
               if (Array.isArray(data.feeItems)) setFeeItems(data.feeItems as FeeItem[]);
@@ -1065,7 +1093,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // 3. Direct Firestore document update for instant real-time sync across all devices & emails
     try {
       const cfgRef = doc(db, 'config', 'school_config');
-      await setDoc(cfgRef, { ...newConfig, updatedAt: new Date().toISOString() }, { merge: true });
+      const cleanConfig = Object.fromEntries(
+        Object.entries(newConfig).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(cfgRef, { ...cleanConfig, updatedAt: new Date().toISOString() }, { merge: true });
     } catch (fsErr) {
       console.warn('Direct Firestore config sync deferred to backend:', fsErr);
     }

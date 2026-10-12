@@ -3,7 +3,11 @@ import { useApp } from '../context/AppContext';
 import { AdminOfficer, FeeItem, SchoolConfig, UserRole } from '../types';
 import { formatRM, rmToCents, centsToRM } from '../utils/currency';
 import { ALL_STANDARD_CLASSES, parseClassInfo, SCHOOL_LEVELS } from '../utils/classes';
-import { generateSampleSchoolLogo } from '../utils/sampleLogo';
+import {
+  generateSampleSchoolLogo,
+  generateSampleSchoolStamp,
+  generateSampleSignature,
+} from '../utils/sampleLogo';
 import {
   Settings,
   Upload,
@@ -36,6 +40,9 @@ import {
   Award,
   Crown,
   Eye,
+  FileSignature,
+  Stamp,
+  PenTool,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -51,8 +58,8 @@ export const SettingsView: React.FC = () => {
     students,
   } = useApp();
 
-  // Active Tab: 'logo' (Muat Naik Logo), 'admins' (Nama Pentadbir Manual), 'teachers' (Guru Kelas & Dokumen), 'rates' (Kadar & Konfigurasi)
-  const [activeTab, setActiveTab] = useState<'logo' | 'admins' | 'teachers' | 'rates'>('logo');
+  // Active Tab: 'logo' (Muat Naik Logo), 'admins' (Nama Pentadbir Manual), 'teachers' (Guru Kelas & Dokumen), 'signatory' (Tandatangan & Cop Resit), 'rates' (Kadar & Konfigurasi)
+  const [activeTab, setActiveTab] = useState<'logo' | 'admins' | 'teachers' | 'signatory' | 'rates'>('logo');
 
   // Local state for fee items & school config
   const [items, setItems] = useState<FeeItem[]>(feeItems);
@@ -88,6 +95,33 @@ export const SettingsView: React.FC = () => {
     items: { className: string; teacherName: string }[];
   } | null>(null);
 
+  // Signatory & Stamp States
+  const [signatoryMode, setSignatoryMode] = useState<'custom' | 'class_teacher' | 'recorder'>(
+    config.receiptSignatoryMode || 'custom'
+  );
+  const [signatoryName, setSignatoryName] = useState<string>(
+    config.receiptSignatoryName || config.adminName || 'LIM AI GIOK'
+  );
+  const [signatoryTitle, setSignatoryTitle] = useState<string>(
+    config.receiptSignatoryTitle || 'Guru Besar'
+  );
+  const [stampText, setStampText] = useState<string>(
+    config.receiptStampText || 'COP RASMI SK TUDAN YBA4111 MIRI'
+  );
+  const [signaturePreview, setSignaturePreview] = useState<string>(
+    config.receiptSignatureBase64 || ''
+  );
+  const [stampPreview, setStampPreview] = useState<string>(
+    config.receiptStampBase64 || ''
+  );
+  const [showSignatureStamp, setShowSignatureStamp] = useState<boolean>(
+    config.showSignatureStampOnReceipt !== false
+  );
+  const [showTeacherSig, setShowTeacherSig] = useState<boolean>(
+    config.showTeacherSignature !== false
+  );
+  const [isSavingSignatory, setIsSavingSignatory] = useState<boolean>(false);
+
   // Sync if context updates
   React.useEffect(() => {
     setItems(feeItems);
@@ -105,6 +139,14 @@ export const SettingsView: React.FC = () => {
     if (config.adminList && config.adminList.length > 0) {
       setAdminList(config.adminList);
     }
+    if (config.receiptSignatoryMode) setSignatoryMode(config.receiptSignatoryMode);
+    if (config.receiptSignatoryName) setSignatoryName(config.receiptSignatoryName);
+    if (config.receiptSignatoryTitle) setSignatoryTitle(config.receiptSignatoryTitle);
+    if (config.receiptStampText) setStampText(config.receiptStampText);
+    if (config.receiptSignatureBase64) setSignaturePreview(config.receiptSignatureBase64);
+    if (config.receiptStampBase64) setStampPreview(config.receiptStampBase64);
+    if (config.showSignatureStampOnReceipt !== undefined) setShowSignatureStamp(config.showSignatureStampOnReceipt);
+    if (config.showTeacherSignature !== undefined) setShowTeacherSig(config.showTeacherSignature);
   }, [config]);
 
   // Combine standard classes + any dynamic classes from existing students
@@ -487,6 +529,197 @@ export const SettingsView: React.FC = () => {
     setStatusMsg({ type: 'success', text: 'Pegawai pentadbir telah dipadam daripada senarai.' });
   };
 
+  // List of all registered teachers (Headmaster, Admin officers, and all 42 Class Teachers)
+  const teacherOptions = useMemo(() => {
+    const list: { name: string; title: string; category: string }[] = [];
+
+    // Headmaster / Primary Admin
+    if (adminName) {
+      list.push({
+        name: adminName.trim(),
+        title: adminTitle || 'Guru Besar',
+        category: 'Pentadbir Utama',
+      });
+    }
+
+    // Other Admin Officers
+    for (const officer of adminList) {
+      if (officer.name && officer.name.trim() !== adminName.trim()) {
+        list.push({
+          name: officer.name.trim(),
+          title: officer.designation || 'Pegawai Pentadbir',
+          category: 'Pegawai Pentadbir',
+        });
+      }
+    }
+
+    // Class Teachers
+    const seenNames = new Set<string>([adminName.trim().toLowerCase()]);
+    for (const [cls, tName] of Object.entries(teachersMap)) {
+      if (tName && tName.trim() && !seenNames.has(tName.trim().toLowerCase())) {
+        seenNames.add(tName.trim().toLowerCase());
+        list.push({
+          name: tName.trim(),
+          title: `Guru Kelas (${cls})`,
+          category: 'Guru Kelas',
+        });
+      }
+    }
+
+    return list;
+  }, [adminName, adminTitle, adminList, teachersMap]);
+
+  // Select teacher from dropdown
+  const handleSelectSignatoryTeacher = (t: { name: string; title: string }) => {
+    setSignatoryName(t.name);
+    setSignatoryTitle(t.title);
+    setStatusMsg({
+      type: 'success',
+      text: `Nama guru "${t.name}" (${t.title}) dipilih sebagai penandatangan resit. Klik "Simpan Tetapan Tandatangan & Cop Resit" untuk mengesahkan.`,
+    });
+  };
+
+  // Signature image upload with canvas optimization
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setStatusMsg({ type: 'error', text: 'Sila muat naik fail gambar tandatangan yang sah (PNG, JPG).' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const rawBase64 = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 400;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimized = canvas.toDataURL('image/png');
+          setSignaturePreview(optimized);
+          return;
+        }
+        setSignaturePreview(rawBase64);
+      };
+      img.onerror = () => setSignaturePreview(rawBase64);
+      img.src = rawBase64;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Stamp image upload with canvas optimization
+  const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setStatusMsg({ type: 'error', text: 'Sila muat naik fail gambar cop yang sah (PNG, JPG).' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const rawBase64 = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 400;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimized = canvas.toDataURL('image/png');
+          setStampPreview(optimized);
+          return;
+        }
+        setStampPreview(rawBase64);
+      };
+      img.onerror = () => setStampPreview(rawBase64);
+      img.src = rawBase64;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUseSampleStamp = () => {
+    const sample = generateSampleSchoolStamp(signatoryTitle || 'GURU BESAR');
+    setStampPreview(sample);
+  };
+
+  const handleUseSampleSignature = () => {
+    const sample = generateSampleSignature(signatoryName || 'Lim Ai Giok');
+    setSignaturePreview(sample);
+  };
+
+  const handleClearSignature = () => {
+    setSignaturePreview('');
+  };
+
+  const handleClearStamp = () => {
+    setStampPreview('');
+  };
+
+  const handleSaveSignatory = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingSignatory(true);
+    setStatusMsg(null);
+    try {
+      const payload: Partial<SchoolConfig> = {
+        receiptSignatoryMode: signatoryMode,
+        receiptSignatoryName: signatoryName.trim(),
+        receiptSignatoryTitle: signatoryTitle.trim(),
+        receiptStampText: stampText.trim(),
+        receiptSignatureBase64: signaturePreview,
+        receiptStampBase64: stampPreview,
+        showSignatureStampOnReceipt: showSignatureStamp,
+        showTeacherSignature: showTeacherSig,
+      };
+
+      const res = await updateConfig(payload);
+      if (res.success) {
+        setStatusMsg({
+          type: 'success',
+          text: 'Tetapan tandatangan dan cop rasmi resit berjaya disimpan dan disegerakkan ke cloud! Resit kini sedia dicetak dengan nama guru dan jawatan yang dipilih.',
+        });
+      } else {
+        setStatusMsg({
+          type: 'error',
+          text: res.error || 'Gagal menyimpan tetapan tandatangan dan cop.',
+        });
+      }
+    } catch (err: any) {
+      setStatusMsg({
+        type: 'error',
+        text: err.message || 'Ralat semasa menyimpan tetapan tandatangan dan cop.',
+      });
+    } finally {
+      setIsSavingSignatory(false);
+    }
+  };
+
   // Calculate total fee of active items
   const activeTotalCents = items
     .filter((it) => it.active)
@@ -557,17 +790,19 @@ export const SettingsView: React.FC = () => {
             {activeTab === 'logo' && 'Ruang Muat Naik Gambar Logo Rasmi Sekolah'}
             {activeTab === 'admins' && 'Tetapan Nama Pentadbir & Pegawai (Manual)'}
             {activeTab === 'teachers' && 'Pengurusan Guru Kelas & Slip Resit Pembayaran'}
+            {activeTab === 'signatory' && 'Tetapan Tandatangan & Cop Rasmi Resit Bayaran'}
             {activeTab === 'rates' && 'Pengurusan Kadar Yuran & Maklumat Sekolah'}
           </h1>
           <p className="text-xs text-slate-500">
             {activeTab === 'logo' && 'Muat naik gambar logo / lencana rasmi sekolah untuk dicetak pada kedua-dua salinan resit bayaran murid (Salinan Ibu Bapa & Salinan Sekolah).'}
             {activeTab === 'admins' && 'Sertakan dan tetapkan nama pentadbir sekolah, jawatan rasmi, guru besar, dan pegawai pengurusan secara manual dalam sistem.'}
             {activeTab === 'teachers' && 'Masukkan nama guru kelas atau muat naik dokumen (PDF, Word, CSV, Excel, Gambar) untuk dipadankan secara auto pada slip resit.'}
+            {activeTab === 'signatory' && 'Pilih nama guru dan jawatan rasmi penandatangan yang dicetak pada slip resit murid, muat naik cop rasmi sekolah, dan semak pratonton masa nyata.'}
             {activeTab === 'rates' && 'Tetapkan kadar rasmi untuk sesi persekolahan dan profil maklumat sekolah.'}
           </p>
         </div>
 
-        {/* Tab Switcher Buttons (4 Dedicated Tabs) */}
+        {/* Tab Switcher Buttons (5 Dedicated Tabs) */}
         <div className="flex items-center flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 self-start xl:self-auto">
           <button
             type="button"
@@ -606,6 +841,19 @@ export const SettingsView: React.FC = () => {
           >
             <Users className="w-3.5 h-3.5 text-emerald-600" />
             <span>Guru Kelas ({filledTeachersCount}/{totalClassesCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('signatory')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+              activeTab === 'signatory'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/80 font-black'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileSignature className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Tandatangan & Cop Resit</span>
           </button>
 
           <button
@@ -1566,6 +1814,591 @@ export const SettingsView: React.FC = () => {
                 <Save className="w-3.5 h-3.5" />
                 <span>{isSaving ? 'Menyimpan...' : 'Simpan Senarai Guru'}</span>
               </button>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB: TANDATANGAN & COP RESIT (PILIHAN NAMA & JAWATAN GURU)     */}
+      {/* ============================================================== */}
+      {activeTab === 'signatory' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Top Banner Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center shrink-0">
+                <FileSignature className="w-5 h-5 text-emerald-700" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">
+                  Tetapan Tandatangan & Cop Rasmi Slip Resit Bayaran
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Pilih nama guru dan jawatan rasmi yang dicetak pada slip resit bayaran murid (Salinan Ibu Bapa & Salinan Sekolah).
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveSignatory}
+              disabled={isSavingSignatory}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer flex items-center space-x-2 shrink-0 self-start sm:self-auto"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSavingSignatory ? 'Menyimpan & Menyegerak...' : 'Simpan Tetapan Tandatangan & Cop'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            {/* LEFT / MAIN COLUMN: SETTINGS FORM (7 Cols on XL) */}
+            <div className="xl:col-span-7 space-y-6">
+              
+              {/* Section 1: Signatory Mode & Teacher Selection */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+                <div className="border-b border-slate-100 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <Award className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-sm font-bold text-slate-900">
+                      1. Pemilihan Nama Guru & Jawatan Penandatangan
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tentukan siapa pegawai atau guru yang namanya dan jawatannya akan tertera di bawah resit bayaran.
+                  </p>
+                </div>
+
+                {/* Signatory Mode */}
+                <div>
+                  <label className="text-xs font-bold text-slate-800 block mb-2">
+                    Mod Penandatangan Resit:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <label
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex flex-col justify-between ${
+                        signatoryMode === 'custom'
+                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <input
+                          type="radio"
+                          name="sigMode"
+                          checked={signatoryMode === 'custom'}
+                          onChange={() => setSignatoryMode('custom')}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="font-bold text-xs">Pilihan Tetapan</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-normal leading-tight">
+                        Gunakan nama guru & jawatan yang dipilih di bawah (Paling Disyorkan).
+                      </p>
+                    </label>
+
+                    <label
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex flex-col justify-between ${
+                        signatoryMode === 'class_teacher'
+                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <input
+                          type="radio"
+                          name="sigMode"
+                          checked={signatoryMode === 'class_teacher'}
+                          onChange={() => setSignatoryMode('class_teacher')}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="font-bold text-xs">Guru Kelas Auto</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-normal leading-tight">
+                        Mengikut guru kelas bagi kelas setiap murid secara automatik.
+                      </p>
+                    </label>
+
+                    <label
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex flex-col justify-between ${
+                        signatoryMode === 'recorder'
+                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <input
+                          type="radio"
+                          name="sigMode"
+                          checked={signatoryMode === 'recorder'}
+                          onChange={() => setSignatoryMode('recorder')}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="font-bold text-xs">Guru Perekod</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-normal leading-tight">
+                        Nama guru / petugas yang log masuk ketika merekodkan bayaran.
+                      </p>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Quick Picker Dropdown */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>Pilih Cepat Nama Guru & Jawatan Daripada Sistem:</span>
+                    <span className="text-[11px] font-normal text-emerald-700">
+                      ({teacherOptions.length} rekod guru sedia ada)
+                    </span>
+                  </label>
+                  
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const opt = teacherOptions.find((t) => t.name === val);
+                      if (opt) handleSelectSignatoryTeacher(opt);
+                    }}
+                    defaultValue=""
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  >
+                    <option value="" disabled>-- Klik di sini untuk memilih nama guru & jawatan --</option>
+                    
+                    <optgroup label="Pentadbir Utama & Pegawai Pengurusan">
+                      {teacherOptions
+                        .filter((t) => t.category !== 'Guru Kelas')
+                        .map((t, idx) => (
+                          <option key={`adm_${idx}`} value={t.name}>
+                            {t.name} — ({t.title})
+                          </option>
+                        ))}
+                    </optgroup>
+
+                    <optgroup label="Senarai Guru Kelas (42 Kelas SK Tudan)">
+                      {teacherOptions
+                        .filter((t) => t.category === 'Guru Kelas')
+                        .map((t, idx) => (
+                          <option key={`cls_${idx}`} value={t.name}>
+                            {t.name} — ({t.title})
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    Memilih dari senarai akan mengisi ruangan Nama Guru dan Jawatan Guru di bawah secara automatik.
+                  </p>
+                </div>
+
+                {/* Teacher Name Input */}
+                <div>
+                  <label className="text-xs font-bold text-slate-800 block mb-1">
+                    Nama Guru / Pegawai Penandatangan:
+                  </label>
+                  <input
+                    type="text"
+                    value={signatoryName}
+                    onChange={(e) => setSignatoryName(e.target.value)}
+                    placeholder="Contoh: LIM AI GIOK atau nama guru kelas..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Nama ini akan dicetak dalam kurungan contohnya: <strong>( {signatoryName || 'NAMA GURU'} )</strong>
+                  </p>
+                </div>
+
+                {/* Teacher Designation / Jawatan Input & Quick Presets */}
+                <div>
+                  <label className="text-xs font-bold text-slate-800 block mb-1">
+                    Jawatan Guru / Pegawai Penandatangan:
+                  </label>
+                  <input
+                    type="text"
+                    value={signatoryTitle}
+                    onChange={(e) => setSignatoryTitle(e.target.value)}
+                    placeholder="Contoh: Guru Besar, Penolong Kanan Pentadbiran, Guru Kelas..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+
+                  {/* Preset Designation Buttons */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase mr-1">Pilihan Pantas:</span>
+                    {[
+                      'Guru Besar',
+                      'Penolong Kanan Pentadbiran',
+                      'Penolong Kanan HEM',
+                      'Penolong Kanan Kokurikulum',
+                      'Guru Kelas',
+                      'Bendahari PIBG',
+                      'Guru Bertugas Mingguan',
+                      'Penyelaras Tahun',
+                      'Petugas Kaunter Yuran',
+                    ].map((titlePreset) => (
+                      <button
+                        key={titlePreset}
+                        type="button"
+                        onClick={() => setSignatoryTitle(titlePreset)}
+                        className={`text-[10.5px] px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                          signatoryTitle === titlePreset
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {titlePreset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Section 2: Official Stamp & Signature Upload */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+                <div className="border-b border-slate-100 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <Stamp className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-sm font-bold text-slate-900">
+                      2. Cop Rasmi Sekolah & Tandatangan Digital
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Muat naik imej cop bulat rasmi dan tandatangan digital untuk dipaparkan secara bertindih pada slip resit rasmi.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  
+                  {/* Stamp Upload Box */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                        <Stamp className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Cop Rasmi Sekolah</span>
+                      </span>
+                      {stampPreview && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          ✓ Aktif
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Stamp Preview Area */}
+                    <div className="h-28 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-2 relative overflow-hidden">
+                      {stampPreview ? (
+                        <img
+                          src={stampPreview}
+                          alt="Cop Rasmi Sekolah"
+                          className="max-h-24 max-w-full object-contain mix-blend-multiply rotate-[-6deg]"
+                        />
+                      ) : (
+                        <div className="text-center text-slate-400 text-xs">
+                          <Stamp className="w-8 h-8 mx-auto mb-1 opacity-40 text-slate-400" />
+                          <span>Tiada imej cop dimuat naik</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="space-y-2">
+                      <label className="block w-full text-center py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 rounded-lg text-xs font-bold transition cursor-pointer">
+                        <span>+ Muat Naik Gambar Cop</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleStampUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleUseSampleStamp}
+                          className="flex-1 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                        >
+                          Contoh Cop SK Tudan
+                        </button>
+                        {stampPreview && (
+                          <button
+                            type="button"
+                            onClick={handleClearStamp}
+                            className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                          >
+                            Padam
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stamp text input */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Teks Pada Cop Rasmi / Pengesahan:
+                      </label>
+                      <input
+                        type="text"
+                        value={stampText}
+                        onChange={(e) => setStampText(e.target.value)}
+                        placeholder="Contoh: COP RASMI SK TUDAN YBA4111 MIRI"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Signature Upload Box */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                        <PenTool className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Tandatangan Digital Guru</span>
+                      </span>
+                      {signaturePreview && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          ✓ Aktif
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Signature Preview Area */}
+                    <div className="h-28 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-2 relative overflow-hidden">
+                      {signaturePreview ? (
+                        <img
+                          src={signaturePreview}
+                          alt="Tandatangan Digital"
+                          className="max-h-20 max-w-full object-contain"
+                        />
+                      ) : (
+                        <div className="text-center text-slate-400 text-xs">
+                          <PenTool className="w-8 h-8 mx-auto mb-1 opacity-40 text-slate-400" />
+                          <span>Tiada imej tandatangan dimuat naik</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="space-y-2">
+                      <label className="block w-full text-center py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 rounded-lg text-xs font-bold transition cursor-pointer">
+                        <span>+ Muat Naik Tandatangan</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSignatureUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleUseSampleSignature}
+                          className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                        >
+                          Contoh Tandatangan
+                        </button>
+                        {signaturePreview && (
+                          <button
+                            type="button"
+                            onClick={handleClearSignature}
+                            className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                          >
+                            Padam
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Disyorkan format PNG dengan latar belakang lutsinar (transparent) supaya tandatangan dan cop kelihatan natural.
+                    </p>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* Section 3: Receipt Display Controls */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <div className="border-b border-slate-100 pb-3">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    3. Pilihan Paparan Pada Slip Resit
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Kawalan elemen yang dipaparkan pada cetakan resit rasmi kedua-dua salinan (Salinan Ibu Bapa & Salinan Sekolah).
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="flex items-start space-x-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 transition border border-transparent hover:border-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={showSignatureStamp}
+                      onChange={(e) => setShowSignatureStamp(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        Paparkan Cop Rasmi & Tandatangan Digital pada Resit
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Jika diaktifkan, imej cop rasmi dan tandatangan akan terus dicetak pada bahagian penandatangan resit.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start space-x-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 transition border border-transparent hover:border-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={showTeacherSig}
+                      onChange={(e) => setShowTeacherSig(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        Paparkan Ruangan Tandatangan Guru Kelas Berasingan
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Memaparkan ruangan tanda tangan tambahan khusus untuk Guru Kelas murid berkenaan di bahagian tengah footer resit.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveSignatory}
+                    disabled={isSavingSignatory}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer flex items-center space-x-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSavingSignatory ? 'Menyimpan...' : 'Simpan Semua Tetapan Tandatangan & Cop'}</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* RIGHT COLUMN: LIVE RECEIPT PREVIEW (5 Cols on XL) */}
+            <div className="xl:col-span-5 space-y-4">
+              
+              <div className="sticky top-20 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                      Pratonton Masa Nyata
+                    </span>
+                    <h3 className="text-sm font-extrabold text-slate-900 mt-1">
+                      Bahagian Bawah Slip Resit Cetakan
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    SK Tudan ({schoolConfig.schoolCode})
+                  </span>
+                </div>
+
+                {/* Simulated Receipt Footer Box */}
+                <div className="border-2 border-slate-300 rounded-xl p-4 bg-white shadow-xs text-xs font-sans text-slate-900 space-y-4">
+                  
+                  {/* Top Bar of Receipt */}
+                  <div className="border-b-2 border-slate-900 pb-1 flex items-center justify-between text-[11px]">
+                    <span className="font-bold uppercase tracking-wider text-slate-800">
+                      {schoolConfig.schoolName} • SISTEM PENGURUSAN YURAN
+                    </span>
+                    <span className="font-bold bg-slate-100 border border-slate-300 px-1.5 py-0.2 rounded text-[10px]">
+                      [ SALINAN IBU BAPA / PENJAGA ]
+                    </span>
+                  </div>
+
+                  <p className="italic text-slate-400 text-[10.5px]">
+                    * Resit cetakan komputer rasmi SK Tudan. Bukti sah pembayaran.
+                  </p>
+
+                  {/* Signatures Area */}
+                  <div className="pt-2 flex justify-between items-end text-xs text-slate-700 gap-2">
+                    
+                    {/* Buyer Signature */}
+                    <div className="w-28 sm:w-32">
+                      <div className="mt-8 pt-1 border-t border-slate-300">
+                        <span className="block font-semibold text-[11px]">Tandatangan Pembayar</span>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          Ibu Bapa / Penjaga
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Class Teacher Signature (If Enabled) */}
+                    {showTeacherSig && signatoryMode !== 'class_teacher' && (
+                      <div className="text-center w-32 sm:w-36">
+                        <div className="mt-8 pt-1 border-t border-slate-300">
+                          <span className="font-bold text-slate-800 block text-[11px]">Guru Kelas</span>
+                          <span className="text-[10.5px] text-emerald-800 font-bold block truncate">
+                            Surayah Mohd Sah
+                          </span>
+                          <span className="text-[9px] text-slate-400 block">(Tandatangan & Cop)</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Official Signatory & Stamp Box */}
+                    <div className="text-right flex-1 min-w-[130px]">
+                      <div className="relative inline-block text-center min-w-[140px]">
+                        
+                        {/* Overlay Container */}
+                        <div className="h-12 relative flex items-center justify-center">
+                          {showSignatureStamp && stampPreview && (
+                            <img
+                              src={stampPreview}
+                              alt="Cop Rasmi"
+                              className="absolute -top-3 right-0 w-16 h-16 object-contain pointer-events-none opacity-85 mix-blend-multiply rotate-[-6deg]"
+                            />
+                          )}
+                          {showSignatureStamp && signaturePreview ? (
+                            <img
+                              src={signaturePreview}
+                              alt="Tandatangan"
+                              className="relative z-10 max-h-11 max-w-[120px] object-contain"
+                            />
+                          ) : (
+                            <div className="h-6"></div>
+                          )}
+                        </div>
+
+                        <div className="border-t border-slate-400 pt-1">
+                          <span className="font-bold text-slate-900 block text-xs">
+                            ( {signatoryMode === 'class_teacher' ? 'Surayah Mohd Sah' : signatoryName || 'LIM AI GIOK'} )
+                          </span>
+                          <span className="text-[10.5px] text-slate-700 font-semibold block">
+                            {signatoryMode === 'class_teacher' ? 'Guru Kelas (3 ARIF)' : signatoryTitle || 'Guru Besar'}
+                          </span>
+                          {stampText && (
+                            <span className="text-[8.5px] text-slate-400 block italic leading-tight">
+                              {stampText}
+                            </span>
+                          )}
+                        </div>
+
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-950 space-y-1">
+                  <div className="flex items-center space-x-1.5 font-bold text-emerald-900">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Disegerakkan Secara Langsung</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Setiap kali mana-mana guru atau petugas menjana atau mencetak resit pembayaran murid, sistem akan membaca tetapan ini dan memaparkan nama serta jawatan penandatangan yang telah dipilih di sini.
+                  </p>
+                </div>
+
+              </div>
+
             </div>
 
           </div>

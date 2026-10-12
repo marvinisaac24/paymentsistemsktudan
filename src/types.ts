@@ -108,9 +108,19 @@ export interface SchoolConfig {
   receiptNote: string;
   classTeachers?: Record<string, string>; // e.g. { "3 ARIF": "Puan Siti Mariam binti Ahmad" }
   adminName?: string; // Nama Pentadbir Utama dimasukkan secara manual (cth: LIM AI GIOK)
-  adminTitle?: string; // Jawatan Pentadbir (cth: Guru Besar)
+  adminTitle?: string; // Jawatan Pentadbir Utama (cth: Guru Besar)
   headmasterName?: string; // Nama Guru Besar / Pengetua (cth: LIM AI GIOK)
   adminList?: AdminOfficer[]; // Senarai nama pentadbir sekolah yang dimasukkan secara manual
+
+  // Tandatangan & Cop Rasmi Resit
+  receiptSignatoryMode?: 'custom' | 'class_teacher' | 'recorder'; // Mod penandatangan: custom (nama guru dipilih), class_teacher (guru kelas murid), recorder (petugas semasa)
+  receiptSignatoryName?: string; // Nama Guru / Pegawai Penandatangan (cth: LIM AI GIOK atau nama guru dipilih)
+  receiptSignatoryTitle?: string; // Jawatan Guru / Pegawai (cth: Guru Besar, Penolong Kanan, Bendahari PIBG)
+  receiptStampText?: string; // Teks pada cop rasmi
+  receiptSignatureBase64?: string; // Imej tandatangan digital (PNG/JPG)
+  receiptStampBase64?: string; // Imej cop rasmi bulat/segi empat (PNG/JPG)
+  showSignatureStampOnReceipt?: boolean; // Paparkan cop & tandatangan pada resit (default true)
+  showTeacherSignature?: boolean; // Paparkan ruangan tandatangan Guru Kelas (default true)
 }
 
 export type UserRole = 'Pentadbir' | 'Guru/Petugas';

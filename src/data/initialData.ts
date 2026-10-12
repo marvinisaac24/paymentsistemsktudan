@@ -73,6 +73,12 @@ export const INITIAL_CONFIG: SchoolConfig = {
       isPrimary: true,
     },
   ],
+  receiptSignatoryMode: 'custom',
+  receiptSignatoryName: 'LIM AI GIOK',
+  receiptSignatoryTitle: 'Guru Besar',
+  receiptStampText: 'SK TUDAN MIRI • PENGESAHAN RASMI',
+  showSignatureStampOnReceipt: true,
+  showTeacherSignature: true,
 };
 
 export const INITIAL_FEE_ITEMS: FeeItem[] = [

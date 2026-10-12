@@ -62,3 +62,54 @@ export function generateSampleSchoolLogo(): string {
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+
+/**
+ * Generates an SVG Data URI representing an official school rubber stamp (Cop Rasmi Bulat) for SK Tudan
+ */
+export function generateSampleSchoolStamp(officerTitle: string = 'GURU BESAR'): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+    <!-- Double border stamp circle in official stamp blue ink -->
+    <circle cx="100" cy="100" r="92" fill="none" stroke="#1d4ed8" stroke-width="4.5" stroke-dasharray="1 0"/>
+    <circle cx="100" cy="100" r="82" fill="none" stroke="#1d4ed8" stroke-width="1.8"/>
+    <circle cx="100" cy="100" r="54" fill="none" stroke="#1d4ed8" stroke-width="2"/>
+
+    <path id="upperArc" d="M 28 100 A 72 72 0 1 1 172 100" fill="none" stroke="none"/>
+    <path id="lowerArc" d="M 172 100 A 72 72 0 0 1 28 100" fill="none" stroke="none"/>
+
+    <text font-family="'Courier New', Courier, monospace, Arial" font-size="11.5" font-weight="900" fill="#1d4ed8" letter-spacing="2.2">
+      <textPath href="#upperArc" startOffset="50%" text-anchor="middle">
+        SEKOLAH KEBANGSAAN TUDAN
+      </textPath>
+    </text>
+
+    <text font-family="'Courier New', Courier, monospace, Arial" font-size="10" font-weight="900" fill="#1d4ed8" letter-spacing="2.2">
+      <textPath href="#lowerArc" startOffset="50%" text-anchor="middle">
+        ★ MIRI, SARAWAK (YBA4111) ★
+      </textPath>
+    </text>
+
+    <!-- Center text of the stamp -->
+    <text x="100" y="88" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="900" fill="#1d4ed8" text-anchor="middle" letter-spacing="1">PENGESAHAN</text>
+    <text x="100" y="103" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="900" fill="#1d4ed8" text-anchor="middle" letter-spacing="1.2">${officerTitle.toUpperCase()}</text>
+    <text x="100" y="117" font-family="Arial, Helvetica, sans-serif" font-size="7.5" font-weight="800" fill="#1d4ed8" text-anchor="middle" letter-spacing="1">SK TUDAN</text>
+  </svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Generates an SVG Data URI representing a digital handwritten signature
+ */
+export function generateSampleSignature(name: string = 'Lim Ai Giok'): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80" width="240" height="80">
+    <path d="M 25 55 Q 40 25 55 45 T 75 35 Q 90 20 105 50 Q 115 25 130 45 T 160 30 Q 185 20 215 50 Q 170 58 120 62 Q 70 65 30 60"
+      fill="none" stroke="#0f172a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 60 40 Q 75 15 90 40 Q 110 50 140 35"
+      fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="120" y="74" font-family="Brush Script MT, cursive, Arial" font-size="13" font-style="italic" fill="#334155" text-anchor="middle">
+      ${name}
+    </text>
+  </svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
