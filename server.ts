@@ -16,6 +16,7 @@ import {
 } from './src/data/initialData';
 import { FeeItem, SchoolConfig, Student, Transaction, AuditLog } from './src/types';
 import { normalizeClassName } from './src/utils/classes';
+import { findSuggestedSiblings } from './src/utils/family';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -896,13 +897,33 @@ PENTING:
         }
       }
 
+      const repStudentObj = db.students.find((s) => s.id === pibgRepresentativeStudentId) || student;
+
+      // Automatically detect all siblings in the school based on parent phone, parent name, or familyId
+      const autoFamily = findSuggestedSiblings(repStudentObj, db.students);
+      const combinedSiblingIds = new Set<string>();
+
+      // 1. Sibling IDs explicitly requested
       if (Array.isArray(requestedSiblingIds)) {
-        pibgFamilySiblingIds = requestedSiblingIds.filter(
-          (sId: string) => sId && sId !== pibgRepresentativeStudentId
-        );
-      } else if (student.siblingIds && student.siblingIds.length > 0) {
-        pibgFamilySiblingIds = student.siblingIds.filter((sId) => sId !== pibgRepresentativeStudentId);
+        for (const sId of requestedSiblingIds) {
+          if (sId && sId !== pibgRepresentativeStudentId) combinedSiblingIds.add(sId);
+        }
       }
+
+      // 2. Sibling IDs already on the student record
+      for (const sId of student.siblingIds || []) {
+        if (sId !== pibgRepresentativeStudentId) combinedSiblingIds.add(sId);
+      }
+      for (const sId of repStudentObj.siblingIds || []) {
+        if (sId !== pibgRepresentativeStudentId) combinedSiblingIds.add(sId);
+      }
+
+      // 3. Automatically identified siblings (Adik-beradik auto-kenalpasti)
+      for (const autoSib of autoFamily.allFamilyMembers) {
+        if (autoSib.id !== pibgRepresentativeStudentId) combinedSiblingIds.add(autoSib.id);
+      }
+
+      pibgFamilySiblingIds = Array.from(combinedSiblingIds);
 
       // Map sibling details with name and class
       pibgFamilySiblingNamesWithClasses = pibgFamilySiblingIds.map((sId) => {
@@ -1313,6 +1334,101 @@ PENTING:
       const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="Ringkasan_Kutipan_Perkara_SK_Tudan.csv"');
+      return res.send(csvContent);
+    }
+
+    if (type === 'payment-due' || type === 'debts-summary') {
+      // Export All Students with Outstanding Balances (Payment Due / Tunggakan)
+      const headers = [
+        'Bil',
+        'Nama Murid',
+        'Kelas',
+        'Sesi',
+        'Nama Penjaga',
+        'No Telefon Penjaga',
+        'Jumlah Keperluan (RM)',
+        'Telah Dibayar (RM)',
+        'Baki Tertunggak (RM)',
+        'Status Bayaran',
+        'Perkara Tertunggak',
+      ];
+
+      const activeItems = db.feeItems.filter((f) => f.active);
+      const validTxs = db.transactions.filter((tx) => tx.status === 'Sah');
+
+      const dueRows: string[] = [];
+      let count = 0;
+
+      for (const std of db.students) {
+        const studentTxs = validTxs.filter((tx) => tx.studentId === std.id);
+        const paidMap = new Map<string, number>();
+        let totalPaidCents = 0;
+        for (const tx of studentTxs) {
+          totalPaidCents += tx.totalAmountCents;
+          for (const it of tx.items) {
+            paidMap.set(it.feeItemId, (paidMap.get(it.feeItemId) || 0) + it.currentPaymentCents);
+          }
+        }
+
+        // Check PIBG family coverage
+        let isCoveredByPibgFamily = false;
+        for (const tx of validTxs) {
+          if (tx.isPibgFamilyPayment && tx.pibgFamilySiblingIds && tx.pibgFamilySiblingIds.includes(std.id)) {
+            isCoveredByPibgFamily = true;
+            break;
+          }
+        }
+
+        const optOutSet = new Set(std.optOutItemIds || []);
+        let totalFeeCents = 0;
+        const pendingItems: string[] = [];
+
+        for (const it of activeItems) {
+          const isPibg = it.name.toLowerCase().includes('pibg') || it.code === 'PBG';
+          const paid = paidMap.get(it.id) || 0;
+          const isOptedOut = optOutSet.has(it.id);
+
+          if (isPibg && isCoveredByPibgFamily) {
+            // No debt for PIBG
+            continue;
+          }
+
+          if (!isOptedOut) {
+            totalFeeCents += it.amountCents;
+            const remaining = Math.max(0, it.amountCents - paid);
+            if (remaining > 0) {
+              pendingItems.push(`${it.name} (Baki RM${(remaining / 100).toFixed(2)})`);
+            }
+          } else if (paid > 0) {
+            totalFeeCents += paid;
+          }
+        }
+
+        const balanceCents = Math.max(0, totalFeeCents - totalPaidCents);
+
+        // Include only students with outstanding debt
+        if (balanceCents > 0) {
+          count++;
+          const status = totalPaidCents > 0 ? 'Bayar Sebahagian' : 'Belum Bayar';
+          dueRows.push([
+            count,
+            `"${std.name.replace(/"/g, '""')}"`,
+            `"${std.className}"`,
+            std.schoolYear,
+            `"${(std.parentName || '-').replace(/"/g, '""')}"`,
+            `"${std.parentPhone || '-'}"`,
+            (totalFeeCents / 100).toFixed(2),
+            (totalPaidCents / 100).toFixed(2),
+            (balanceCents / 100).toFixed(2),
+            status,
+            `"${pendingItems.join('; ')}"`,
+          ].join(','));
+        }
+      }
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...dueRows].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="Laporan_Peringatan_Tunggakan_Yuran_SK_Tudan.csv"');
       return res.send(csvContent);
     }
 

@@ -119,6 +119,9 @@ export interface CurrentUser {
   name: string;
   role: UserRole;
   email?: string;
+  uid?: string;
+  photoURL?: string;
+  assignedClass?: string;
 }
 
 export interface ItemBalanceInfo {

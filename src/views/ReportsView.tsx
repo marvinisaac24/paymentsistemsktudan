@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Receipt,
   Archive,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const ReportsView: React.FC = () => {
@@ -189,6 +190,33 @@ export const ReportsView: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Muat Turun Resit Pukal</span>
           </button>
+        </div>
+
+        {/* Export 5: Laporan Peringatan Baki Yuran / Hutang */}
+        <div className="bg-white p-5 rounded-xl border border-rose-200 shadow-xs flex flex-col justify-between hover:border-rose-400 transition ring-1 ring-rose-100 sm:col-span-2 lg:col-span-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 mb-0.5">
+                  Laporan Peringatan Baki Yuran & Tunggakan Murid (Payment Due)
+                </h3>
+                <p className="text-xs text-slate-500 max-w-2xl">
+                  Mengeksport senarai lengkap murid yang mempunyai baki belum selesai berserta nama penjaga, nombor telefon, dan pecahan butiran tertunggak untuk tindakan guru kelas.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/api/export/payment-due"
+              download
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow-xs text-center transition flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>Muat Turun CSV Tunggakan</span>
+            </a>
+          </div>
         </div>
 
       </div>

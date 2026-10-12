@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db, testConnection } from '../firebase';
+import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
+import { db, auth, testConnection } from '../firebase';
 import {
   FeeItem,
   SchoolConfig,
@@ -20,6 +21,12 @@ import {
   INITIAL_AUDIT_LOGS,
 } from '../data/initialData';
 import { getMalaysiaDateTime } from '../utils/currency';
+import {
+  findSuggestedSiblings,
+  buildFamilyLookupIndex,
+  findSuggestedSiblingsFast,
+  FamilyLookupIndex,
+} from '../utils/family';
 
 interface AppContextType {
   config: SchoolConfig;
@@ -29,6 +36,9 @@ interface AppContextType {
   auditLogs: AuditLog[];
   currentUser: CurrentUser;
   setCurrentUser: (user: CurrentUser) => void;
+  authUser: FirebaseUser | null;
+  isAuthChecking: boolean;
+  logout: () => Promise<void>;
   isLoading: boolean;
   isRealtimeConnected: boolean;
   refreshData: () => Promise<void>;
@@ -111,6 +121,9 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'sk_tudan_yuran_data_v1';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
   const [currentUser, setCurrentUser] = useState<CurrentUser>({
     name: 'LIM AI GIOK (Guru Besar)',
     role: 'Pentadbir',
@@ -123,6 +136,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(true);
+
+  // Monitor Firebase Authentication State
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setIsAuthChecking(false);
+
+      if (user && user.email) {
+        const emailLower = user.email.toLowerCase();
+        const displayName = user.displayName || user.email.split('@')[0];
+
+        // Determine role:
+        // Guru Besar / Pentadbir: if email contains admin / lim / gurubesar or matches admin config
+        const isAdmin =
+          emailLower.includes('admin') ||
+          emailLower.includes('gurubesar') ||
+          emailLower.includes('limaigiok') ||
+          emailLower.includes('yba4111') ||
+          emailLower.includes('marvinisaac24'); // User developer / administrator email
+
+        // Check if teacher name corresponds to any class teacher
+        let teacherClass = '';
+        if (config.classTeachers) {
+          for (const [cls, teacherName] of Object.entries(config.classTeachers)) {
+            if (
+              displayName.toLowerCase().includes(teacherName.toLowerCase()) ||
+              teacherName.toLowerCase().includes(displayName.toLowerCase())
+            ) {
+              teacherClass = cls;
+              break;
+            }
+          }
+        }
+
+        const formattedName = user.displayName || displayName.toUpperCase();
+
+        setCurrentUser({
+          name: isAdmin ? (config.adminName ? `${config.adminName} (${config.adminTitle || 'Guru Besar'})` : formattedName) : formattedName,
+          role: isAdmin ? 'Pentadbir' : 'Guru/Petugas',
+          email: user.email,
+          uid: user.uid,
+          photoURL: user.photoURL || undefined,
+          assignedClass: teacherClass || undefined,
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+    };
+  }, [config.adminName, config.adminTitle, config.classTeachers]);
+
+  const logout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setAuthUser(null);
+    } catch (err) {
+      console.error('Gagal log keluar:', err);
+    }
+  };
 
   // Sync state data to Firestore to guarantee persistent real-time propagation across teachers
   const syncToFirestore = async (stateData?: {
@@ -253,14 +326,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       console.warn('Could not initialize Firestore onSnapshot listener:', err);
     }
 
-    // Polling and window focus sync fallback for high-speed multi-teacher synchronization
+    // Polling and window focus sync fallback (30 seconds to avoid wasting mobile CPU)
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         loadState();
       }
-    }, 5000);
+    }, 30000);
 
     const handleFocus = () => {
+      // Refresh on window focus only if tab was inactive
       loadState();
     };
 
@@ -279,20 +353,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await loadState();
   };
 
-  // Helper to calculate student payment summary
+  // Pre-indexed family lookup to guarantee sub-millisecond execution
+  const familyIndex = useMemo(() => {
+    return buildFamilyLookupIndex(students);
+  }, [students]);
+
+  // Pre-grouped transactions by studentId
+  const validTransactionsByStudent = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+      if (tx.status === 'Sah') {
+        let arr = map.get(tx.studentId);
+        if (!arr) {
+          arr = [];
+          map.set(tx.studentId, arr);
+        }
+        arr.push(tx);
+      }
+    }
+    return map;
+  }, [transactions]);
+
+  // Pre-filtered valid PIBG transactions to avoid scanning entire transaction list per student
+  const validPibgTransactions = useMemo(() => {
+    return transactions.filter(
+      (t) =>
+        t.status === 'Sah' &&
+        t.items?.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0)
+    );
+  }, [transactions]);
+
+  // Active fee items cache
+  const activeFeeItems = useMemo(() => {
+    return feeItems.filter((f) => f.active);
+  }, [feeItems]);
+
+  // Helper to calculate student payment summary (Optimized for instant execution)
   const getStudentSummary = (studentId: string): StudentPaymentSummary | null => {
-    const student = students.find((s) => s.id === studentId);
+    const student = familyIndex.studentMap.get(studentId) || students.find((s) => s.id === studentId);
     if (!student) return null;
 
-    const validTxs = transactions.filter((t) => t.studentId === studentId && t.status === 'Sah');
+    const validTxs = validTransactionsByStudent.get(studentId) || [];
 
     // Build paid amounts map per item
     const paidPerItem = new Map<string, number>();
     let totalPaid = 0;
 
-    for (const tx of validTxs) {
+    for (let i = 0; i < validTxs.length; i++) {
+      const tx = validTxs[i];
       totalPaid += tx.totalAmountCents;
-      for (const it of tx.items) {
+      for (let j = 0; j < tx.items.length; j++) {
+        const it = tx.items[j];
         const cur = paidPerItem.get(it.feeItemId) || 0;
         paidPerItem.set(it.feeItemId, cur + it.currentPaymentCents);
       }
@@ -303,31 +415,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let isCoveredByFamilyRep = false;
 
     // Check if the student themselves paid PIBG directly
-    const directPibgPaid = Array.from(paidPerItem.entries()).some(([itemId, amt]) => {
+    let directPibgPaid = false;
+    for (const [itemId, amt] of paidPerItem.entries()) {
       const f = feeItems.find((x) => x.id === itemId);
-      return (f?.name.toLowerCase().includes('pibg') || f?.code === 'PBG') && amt > 0;
-    });
+      if ((f?.name.toLowerCase().includes('pibg') || f?.code === 'PBG') && amt > 0) {
+        directPibgPaid = true;
+        break;
+      }
+    }
 
     if (!directPibgPaid) {
-      // Look for a valid transaction where this student is listed in pibgFamilySiblingIds,
-      // or from an explicitly linked sibling/familyId
-      for (const tx of transactions) {
-        if (tx.status !== 'Sah') continue;
-        const hasPibgInTx = tx.items?.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0);
-        if (!hasPibgInTx) continue;
+      // Auto-detect all family members / siblings for this student using fast O(1) index
+      const detectedFam = findSuggestedSiblingsFast(student, familyIndex);
+      const allFamilyMemberIds = new Set<string>([
+        studentId,
+        ...(student.siblingIds || []),
+        ...detectedFam.allFamilyMembers.map((s) => s.id),
+      ]);
 
+      // Scan only PIBG transactions (typically a small list)
+      for (let i = 0; i < validPibgTransactions.length; i++) {
+        const tx = validPibgTransactions[i];
+
+        // 1. Explicitly recorded in pibgFamilySiblingIds
         if (tx.pibgFamilySiblingIds && tx.pibgFamilySiblingIds.includes(studentId)) {
           familyPibgTx = tx;
           isCoveredByFamilyRep = true;
           break;
         }
 
-        // Also check if tx was made by a known sibling or same familyId
-        const isTxFromSibling =
-          (student.siblingIds && student.siblingIds.includes(tx.studentId)) ||
-          (student.familyId && student.familyId === students.find((s) => s.id === tx.studentId)?.familyId);
+        // 2. Transaction student is one of the detected family members / siblings
+        if (
+          allFamilyMemberIds.has(tx.studentId) ||
+          (tx.pibgRepresentativeStudentId && allFamilyMemberIds.has(tx.pibgRepresentativeStudentId))
+        ) {
+          familyPibgTx = tx;
+          isCoveredByFamilyRep = true;
+          break;
+        }
 
-        if (isTxFromSibling) {
+        // 3. Or transaction covers any of this student's family members
+        if (tx.pibgFamilySiblingIds && tx.pibgFamilySiblingIds.some((sId) => allFamilyMemberIds.has(sId))) {
           familyPibgTx = tx;
           isCoveredByFamilyRep = true;
           break;
@@ -335,19 +463,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } else {
       // Student is direct payer. Find if this student has a transaction with PIBG
-      const repTx = validTxs.find((t) => t.items.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0));
+      const repTx = validTxs.find((t) =>
+        t.items.some((it) => it.feeItemName.toLowerCase().includes('pibg') && it.currentPaymentCents > 0)
+      );
       if (repTx) {
         familyPibgTx = repTx;
       }
     }
 
     const optOutSet = new Set(student.optOutItemIds || []);
-    const activeItems = feeItems.filter((f) => f.active);
 
     let totalFeeCents = 0;
     let optedOutCount = 0;
 
-    const itemBalances = activeItems.map((item) => {
+    const itemBalances = activeFeeItems.map((item) => {
       const isPibg = item.name.toLowerCase().includes('pibg') || item.code === 'PBG';
       const paid = paidPerItem.get(item.id) || 0;
       const isOptedOut = optOutSet.has(item.id);
@@ -359,7 +488,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let familyPibgPaymentInfo = undefined;
 
       if (isPibg && isCoveredByFamilyRep && familyPibgTx) {
-        // Covered by family representative: ELAKKAN PENGIRAAN BAYARAN BERULANG!
+        // Covered by family representative
         isPaidViaFamilyRepresentative = true;
         isItemPaid = true;
         remaining = 0;
@@ -370,10 +499,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           receiptNumber: familyPibgTx.receiptNumber,
           transactionId: familyPibgTx.id,
           paidDate: familyPibgTx.timestampMalaysia || familyPibgTx.timestamp,
-          amountCents: familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents || item.amountCents,
+          amountCents:
+            familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents ||
+            item.amountCents,
           notes: familyPibgTx.notes,
         };
-        // Do not add to totalFeeCents so the sibling does not owe PIBG
       } else {
         if (!isOptedOut) {
           totalFeeCents += item.amountCents;
@@ -403,7 +533,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const balanceCents = Math.max(0, totalFeeCents - totalPaid);
 
     let status: 'Belum Bayar' | 'Bayar Sebahagian' | 'Selesai' = 'Belum Bayar';
-    if (balanceCents === 0 && (totalPaid > 0 || isCoveredByFamilyRep || optedOutCount === activeItems.length)) {
+    if (balanceCents === 0 && (totalPaid > 0 || isCoveredByFamilyRep || optedOutCount === activeFeeItems.length)) {
       status = 'Selesai';
     } else if (totalPaid > 0 && balanceCents > 0) {
       status = 'Bayar Sebahagian';
@@ -411,17 +541,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status = 'Belum Bayar';
     }
 
-    // Linked siblings list
-    const siblingIdsList = student.siblingIds || [];
-    const linkedSiblings = siblingIdsList
-      .map((sId) => students.find((s) => s.id === sId))
-      .filter((s): s is Student => Boolean(s))
-      .map((s) => ({
-        id: s.id,
-        name: s.name,
-        className: s.className,
-        schoolYear: s.schoolYear,
-      }));
+    // Fast linked siblings mapping
+    const detectedFamSiblings = findSuggestedSiblingsFast(student, familyIndex);
+    const combinedSiblingMap = new Map<string, Student>();
+    for (let i = 0; i < detectedFamSiblings.allFamilyMembers.length; i++) {
+      const sib = detectedFamSiblings.allFamilyMembers[i];
+      if (sib.id !== student.id) combinedSiblingMap.set(sib.id, sib);
+    }
+    for (const sId of student.siblingIds || []) {
+      const s = familyIndex.studentMap.get(sId);
+      if (s && s.id !== student.id) combinedSiblingMap.set(s.id, s);
+    }
+    const linkedSiblings = Array.from(combinedSiblingMap.values()).map((s) => ({
+      id: s.id,
+      name: s.name,
+      className: s.className,
+      schoolYear: s.schoolYear,
+    }));
 
     let pibgFamilyPayment = undefined;
     if (familyPibgTx) {
@@ -434,7 +570,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         receiptNumber: familyPibgTx.receiptNumber,
         transactionId: familyPibgTx.id,
         paidDate: familyPibgTx.timestampMalaysia || familyPibgTx.timestamp,
-        amountCents: familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents || 2000,
+        amountCents:
+          familyPibgTx.items.find((i) => i.feeItemName.toLowerCase().includes('pibg'))?.currentPaymentCents || 2000,
         notes: familyPibgTx.notes,
         siblings: familyPibgTx.pibgFamilySiblingNamesWithClasses || [],
       };
@@ -454,10 +591,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Memoized summaries for all students
+  // Ultra-fast Memoized summaries for all students
   const allStudentSummaries = useMemo(() => {
-    return students.map((std) => getStudentSummary(std.id)!).filter(Boolean);
-  }, [students, transactions, feeItems]);
+    const list: StudentPaymentSummary[] = [];
+    for (let i = 0; i < students.length; i++) {
+      const summary = getStudentSummary(students[i].id);
+      if (summary) list.push(summary);
+    }
+    return list;
+  }, [students, validTransactionsByStudent, validPibgTransactions, activeFeeItems, familyIndex]);
 
   // Overall Dashboard Statistics
   const stats: DashboardStats = useMemo(() => {
@@ -892,6 +1034,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         auditLogs,
         currentUser,
         setCurrentUser,
+        authUser,
+        isAuthChecking,
+        logout,
         isLoading,
         isRealtimeConnected,
         refreshData,

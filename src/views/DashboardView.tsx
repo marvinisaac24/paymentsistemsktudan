@@ -233,6 +233,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
+            onClick={() => onNavigateToTab('payment-due')}
+            className="px-3.5 py-2.5 bg-rose-700/80 hover:bg-rose-600 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition active:scale-95 cursor-pointer flex items-center space-x-1.5 border border-rose-500/50"
+            title="Buka Sistem Peringatan Baki Yuran & Laporan Hutang"
+          >
+            <Clock className="w-4 h-4 text-rose-300" />
+            <span>Peringatan Baki</span>
+          </button>
+          <button
             onClick={() => onNavigateToTab('gambar-kelas')}
             className="px-3.5 py-2.5 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition active:scale-95 cursor-pointer flex items-center space-x-1.5 border border-emerald-500/50"
           >
@@ -297,19 +305,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Belum Ada Bayaran */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        {/* Belum Ada Bayaran / Peringatan Baki Yuran */}
+        <div
+          onClick={() => onNavigateToTab('payment-due')}
+          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-rose-400 hover:bg-rose-50/20 transition cursor-pointer"
+          title="Klik untuk buka Sistem Peringatan Baki Yuran & Laporan Hutang"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Belum Ada Bayaran</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Peringatan Baki</span>
+            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-slate-700 font-mono">
-              {unpaidStudentsCount}
+            <div className="text-xl sm:text-2xl font-black text-rose-700 font-mono">
+              {unpaidStudentsCount} <span className="text-xs font-normal text-slate-500">murid</span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">Belum rekod keperluan</p>
+            <p className="text-[11px] text-rose-600 mt-1 font-semibold flex items-center space-x-1">
+              <span>Semak Peringatan →</span>
+            </p>
           </div>
         </div>
 

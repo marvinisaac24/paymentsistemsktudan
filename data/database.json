@@ -229,7 +229,11 @@
       "parentPhone": "0139455269",
       "schoolYear": "2026",
       "createdAt": "2026-09-29T04:17:08.341Z",
-      "updatedAt": "2026-09-29T04:17:08.341Z"
+      "updatedAt": "2026-10-11T16:50:11.805Z",
+      "familyId": "fam_1791737388518_xb8o",
+      "siblingIds": [
+        "std_1790655428514_gykm11"
+      ]
     },
     {
       "id": "std_1790655428342_zdq589",
@@ -9612,7 +9616,11 @@
       "parentPhone": "0139455269",
       "schoolYear": "2026",
       "createdAt": "2026-09-29T04:17:08.341Z",
-      "updatedAt": "2026-09-29T04:17:08.341Z"
+      "updatedAt": "2026-10-11T16:50:11.805Z",
+      "familyId": "fam_1791737388518_xb8o",
+      "siblingIds": [
+        "std_1790655428342_swhyuy"
+      ]
     },
     {
       "id": "std_1790655428514_c0kmsx",
@@ -14500,6 +14508,46 @@
   ],
   "auditLogs": [
     {
+      "id": "log_1791737411844",
+      "timestamp": "2026-10-11T16:50:11.844Z",
+      "timestampMalaysia": "12/10/2026, 12:50:11 PG",
+      "action": "PADAM_BAYARAN",
+      "performedBy": "Guru Penguji",
+      "role": "Guru/Petugas",
+      "details": "MEMADAM rekod bayaran resit SKT/2026/0010 bernilai RM20.00 bagi murid ADRIANNA BENIN ANAK VELLY (PRASEKOLAH BESTARI). Sebab: \"Pembersihan ujian\".",
+      "targetId": "tx_1791737411813_i4u9l"
+    },
+    {
+      "id": "log_1791737411813",
+      "timestamp": "2026-10-11T16:50:11.805Z",
+      "timestampMalaysia": "12/10/2026, 12:50:11 PG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "Guru Penguji",
+      "role": "Guru/Petugas",
+      "details": "Merekodkan bayaran resit SKT/2026/0010 Sumbangan PIBG Keluarga melalui wakil ADRIANNA BENIN ANAK VELLY (PRASEKOLAH BESTARI) bagi 1 adik-beradik sebanyak RM20.00 (Tunai).",
+      "targetId": "tx_1791737411813_i4u9l"
+    },
+    {
+      "id": "log_1791737388553",
+      "timestamp": "2026-10-11T16:49:48.552Z",
+      "timestampMalaysia": "12/10/2026, 12:49:48 PG",
+      "action": "PADAM_BAYARAN",
+      "performedBy": "Guru Penguji",
+      "role": "Guru/Petugas",
+      "details": "MEMADAM rekod bayaran resit SKT/2026/0009 bernilai RM20.00 bagi murid ADRIANNA BENIN ANAK VELLY (PRASEKOLAH BESTARI). Sebab: \"Pembersihan ujian\".",
+      "targetId": "tx_1791737388518_hvtln"
+    },
+    {
+      "id": "log_1791737388518",
+      "timestamp": "2026-10-11T16:49:48.517Z",
+      "timestampMalaysia": "12/10/2026, 12:49:48 PG",
+      "action": "TAMBAH_BAYARAN",
+      "performedBy": "Guru Penguji",
+      "role": "Guru/Petugas",
+      "details": "Merekodkan bayaran resit SKT/2026/0009 sebanyak RM20.00 bagi murid ADRIANNA BENIN ANAK VELLY (PRASEKOLAH BESTARI) melalui kaedah Tunai.",
+      "targetId": "tx_1791737388518_hvtln"
+    },
+    {
       "id": "log_1791665695880",
       "timestamp": "2026-10-10T20:54:55.880Z",
       "timestampMalaysia": "11/10/2026, 04:54:55 PG",
@@ -14684,5 +14732,5 @@
       "targetId": "tx_004"
     }
   ],
-  "receiptCounter": 8
+  "receiptCounter": 10
 }

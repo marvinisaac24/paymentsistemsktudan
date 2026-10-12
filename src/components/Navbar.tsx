@@ -15,6 +15,9 @@ import {
   X,
   Camera,
   UserCog,
+  LogOut,
+  Mail,
+  AlertTriangle,
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -29,7 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setCurrentTab,
   onOpenNewPayment,
 }) => {
-  const { config, currentUser, setCurrentUser, isRealtimeConnected } = useApp();
+  const { config, currentUser, setCurrentUser, isRealtimeConnected, authUser, logout } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
@@ -53,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Papan Pemuka', icon: LayoutDashboard },
     { id: 'students', label: 'Senarai Murid', icon: Users },
+    { id: 'payment-due', label: 'Peringatan Baki Yuran', icon: AlertTriangle },
     { id: 'gambar-kelas', label: 'Gambar Kelas', icon: Camera },
     { id: 'transactions', label: 'Sejarah Resit', icon: Receipt },
     { id: 'reports', label: 'Laporan & Eksport', icon: FileSpreadsheet },
@@ -133,10 +137,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {userDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl py-2 z-50 border border-slate-200 text-slate-900 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/50">
-                    <p className="text-xs text-slate-500 font-medium">Log Masuk Sebagai Pengguna:</p>
-                    <p className="text-sm font-bold text-slate-800">{currentUser.name}</p>
-                    <span className={`inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${currentUser.role === 'Pentadbir' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                  <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+                    <p className="text-[11px] text-slate-500 font-medium">Log Masuk Sebagai Emel ID:</p>
+                    <p className="text-xs font-bold text-slate-900 truncate">{currentUser.email || authUser?.email || '-'}</p>
+                    <p className="text-xs font-semibold text-slate-700 mt-0.5">{currentUser.name}</p>
+                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${currentUser.role === 'Pentadbir' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
                       Peranan: {currentUser.role}
                     </span>
                   </div>
@@ -163,6 +168,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                         ✓ Akses Petugas: Rekod bayaran & muat turun resit rasmi. MyKid disamarkan.
                       </span>
                     )}
+                  </div>
+
+                  {/* Log Out Button */}
+                  <div className="p-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        logout();
+                      }}
+                      className="w-full px-3 py-2 text-left rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition flex items-center space-x-2 cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Log Keluar Emel ID</span>
+                    </button>
                   </div>
                 </div>
               )}

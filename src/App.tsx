@@ -17,11 +17,13 @@ import { TransactionsView } from './views/TransactionsView';
 import { ReportsView } from './views/ReportsView';
 import { SettingsView } from './views/SettingsView';
 import { AuditTrailView } from './views/AuditTrailView';
+import { PaymentDueView } from './views/PaymentDueView';
 import { Transaction, Student } from './types';
-import { CheckCircle2, ShieldCheck, FileText, School } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, FileText, School, Loader2 } from 'lucide-react';
+import { LoginScreen } from './components/LoginScreen';
 
 const MainContent: React.FC = () => {
-  const { config, transactions, currentUser } = useApp();
+  const { config, transactions, currentUser, authUser, isAuthChecking } = useApp();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
   // Modals state
@@ -39,6 +41,28 @@ const MainContent: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [cancelModalTransaction, setCancelModalTransaction] = useState<Transaction | null>(null);
   const [bulkDeleteStudentIds, setBulkDeleteStudentIds] = useState<string[]>([]);
+
+  // If Firebase Auth is checking initial state, show smooth loader
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-white">
+        <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-3" />
+        <p className="text-sm font-semibold text-slate-300">Menyemak status log masuk Emel ID...</p>
+        <p className="text-xs text-slate-500 mt-1">Sistem Rekod Pembayaran SK Tudan ({config.schoolCode})</p>
+      </div>
+    );
+  }
+
+  // If user is not authenticated via Email ID / Google Account, show Login Screen
+  if (!authUser) {
+    return (
+      <LoginScreen
+        schoolName={config.schoolName}
+        schoolCode={config.schoolCode}
+        adminName={config.adminName || 'LIM AI GIOK'}
+      />
+    );
+  }
 
   const handleOpenPayment = (
     studentId?: string,
@@ -148,6 +172,12 @@ const MainContent: React.FC = () => {
             onOpenNewPayment={() => handleOpenPayment()}
             onOpenEditTransaction={(tx) => setSelectedTransactionForEdit(tx)}
             onOpenPibgReceipt={(tx) => setSelectedPibgTransaction(tx)}
+          />
+        )}
+
+        {currentTab === 'payment-due' && (
+          <PaymentDueView
+            onOpenPaymentForStudent={(id) => handleOpenPayment(id)}
           />
         )}
 

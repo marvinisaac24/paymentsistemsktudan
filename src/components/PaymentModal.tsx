@@ -213,16 +213,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     };
   }, [repStudent, students, manualExtraSiblings]);
 
-  // Synchronize default linked siblings when familyInfo changes
+  // Synchronize default linked siblings whenever familyInfo or repStudent changes
   useEffect(() => {
     if (familyInfo.allFamilyMembers.length > 0) {
-      setLinkedSiblingIds((prev) => {
-        const next = new Set(prev);
-        familyInfo.allFamilyMembers.forEach((s) => next.add(s.id));
-        return Array.from(next);
-      });
+      setLinkedSiblingIds(familyInfo.allFamilyMembers.map((s) => s.id));
+    } else {
+      setLinkedSiblingIds([]);
     }
-  }, [familyInfo]);
+  }, [familyInfo.allFamilyMembers]);
 
   // Reset representative and extra siblings when main student changes
   useEffect(() => {
