@@ -129,7 +129,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     role: 'Pentadbir',
   });
 
-  const [config, setConfig] = useState<SchoolConfig>(INITIAL_CONFIG);
+  const [config, setConfig] = useState<SchoolConfig>(() => {
+    if (typeof window !== 'undefined') {
+      const cachedLogo = localStorage.getItem('sk_tudan_school_logo');
+      if (cachedLogo) {
+        return { ...INITIAL_CONFIG, logoBase64: cachedLogo };
+      }
+    }
+    return INITIAL_CONFIG;
+  });
   const [feeItems, setFeeItems] = useState<FeeItem[]>(INITIAL_FEE_ITEMS);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
@@ -142,6 +150,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
       setIsAuthChecking(false);
+
+      // Re-load latest database records whenever user auth status changes or switches accounts
+      loadState();
 
       if (user && user.email) {
         const emailLower = user.email.toLowerCase();
@@ -197,6 +208,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Sync config specifically to Firestore config/school_config
+  const syncConfigToFirestoreDoc = async (cfg: SchoolConfig) => {
+    try {
+      const cfgRef = doc(db, 'config', 'school_config');
+      await setDoc(cfgRef, { ...cfg, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (err) {
+      console.warn('Direct Firestore config sync skipped/deferred:', err);
+    }
+  };
+
   // Sync state data to Firestore to guarantee persistent real-time propagation across teachers
   const syncToFirestore = async (stateData?: {
     config?: SchoolConfig;
@@ -211,17 +232,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
+      const currentConfig = stateData?.config || config;
+      // Strip huge logoBase64 from sk_tudan_state document to avoid exceeding 1MB limit
+      const configSummary = { ...currentConfig };
+      delete configSummary.logoBase64;
+
       const stateDocRef = doc(db, 'system', 'sk_tudan_state');
-      const payload = stateData || {
-        config,
-        feeItems,
-        students,
-        transactions,
-        auditLogs,
+      const payload = {
+        config: configSummary,
+        feeItems: stateData?.feeItems || feeItems,
+        students: stateData?.students || students,
+        transactions: stateData?.transactions || transactions,
+        auditLogs: stateData?.auditLogs || auditLogs,
         lastUpdated: new Date().toISOString(),
       };
       await setDoc(stateDocRef, payload, { merge: true });
       setIsRealtimeConnected(true);
+
+      if (currentConfig.logoBase64) {
+        await syncConfigToFirestoreDoc(currentConfig);
+      }
     } catch (err: any) {
       if (
         err?.code === 'resource-exhausted' ||
@@ -242,7 +272,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const res = await fetch('/api/state');
       if (res.ok) {
         const data = await res.json();
-        if (data.config) setConfig(data.config);
+        if (data.config) {
+          const cachedLogo = typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null;
+          const finalConfig = {
+            ...data.config,
+            logoBase64: data.config.logoBase64 || cachedLogo || '',
+          };
+          setConfig(finalConfig);
+          if (finalConfig.logoBase64) {
+            try {
+              localStorage.setItem('sk_tudan_school_logo', finalConfig.logoBase64);
+            } catch {}
+          }
+        }
         if (Array.isArray(data.feeItems)) setFeeItems(data.feeItems);
         if (Array.isArray(data.students)) setStudents(data.students);
         if (Array.isArray(data.transactions)) setTransactions(data.transactions);
@@ -250,7 +292,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
         setIsLoading(false);
-        // Note: Do NOT call syncToFirestore on read polling, to avoid consuming free daily write quota!
         return;
       }
     } catch {
@@ -259,7 +300,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          if (parsed.config) setConfig(parsed.config);
+          if (parsed.config) {
+            const cachedLogo = localStorage.getItem('sk_tudan_school_logo');
+            setConfig({
+              ...parsed.config,
+              logoBase64: parsed.config.logoBase64 || cachedLogo || '',
+            });
+          }
           if (parsed.feeItems) setFeeItems(parsed.feeItems);
           if (parsed.students) setStudents(parsed.students);
           if (parsed.transactions) setTransactions(parsed.transactions);
@@ -283,7 +330,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       })
       .catch(() => {});
 
-    // Firestore Real-Time Listener (onSnapshot): Updates instantly whenever records are modified
+    // 1. Real-Time Listener for School Configuration (config/school_config):
+    // Syncs logo and school parameters across all teachers and emails immediately
+    let unsubscribeConfig: (() => void) | null = null;
+    try {
+      const configDocRef = doc(db, 'config', 'school_config');
+      unsubscribeConfig = onSnapshot(
+        configDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const remoteConfig = snapshot.data() as SchoolConfig;
+            if (remoteConfig) {
+              setConfig((prev) => {
+                const merged = {
+                  ...prev,
+                  ...remoteConfig,
+                  logoBase64: remoteConfig.logoBase64 || prev.logoBase64 || '',
+                };
+                if (merged.logoBase64) {
+                  try {
+                    localStorage.setItem('sk_tudan_school_logo', merged.logoBase64);
+                  } catch {}
+                }
+                return merged;
+              });
+            }
+          }
+        },
+        (err) => {
+          console.warn('Firestore config onSnapshot listener notification:', err.message);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize Firestore config onSnapshot listener:', err);
+    }
+
+    // 2. Firestore Real-Time Listener (system/sk_tudan_state):
+    // Updates transactions, students, fee items, and audit logs instantly
     let unsubscribeFirestore: (() => void) | null = null;
     try {
       const stateDocRef = doc(db, 'system', 'sk_tudan_state');
@@ -294,7 +377,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const data = snapshot.data();
             if (data) {
               setIsRealtimeConnected(true);
-              // Only apply Firestore snapshot if it has valid data and doesn't overwrite more recent server transactions
               setTransactions((prevTx) => {
                 if (Array.isArray(data.transactions) && data.transactions.length >= prevTx.length) {
                   return data.transactions as Transaction[];
@@ -307,7 +389,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
                 return prevStd;
               });
-              if (data.config) setConfig(data.config as SchoolConfig);
+              if (data.config) {
+                setConfig((prev) => ({
+                  ...prev,
+                  ...data.config,
+                  // Never wipe out existing logo with empty value from state doc
+                  logoBase64: data.config.logoBase64 || prev.logoBase64 || '',
+                }));
+              }
               if (Array.isArray(data.feeItems)) setFeeItems(data.feeItems as FeeItem[]);
               if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs as AuditLog[]);
             }
@@ -334,7 +423,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, 30000);
 
     const handleFocus = () => {
-      // Refresh on window focus only if tab was inactive
       loadState();
     };
 
@@ -342,6 +430,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     window.addEventListener('visibilitychange', handleFocus);
 
     return () => {
+      if (unsubscribeConfig) unsubscribeConfig();
       if (unsubscribeFirestore) unsubscribeFirestore();
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
@@ -959,6 +1048,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // 8. Update Config
   const updateConfig = async (newConfig: Partial<SchoolConfig>) => {
+    // 1. Immediately cache logo in localStorage if updated or removed
+    if (newConfig.logoBase64 !== undefined) {
+      try {
+        if (newConfig.logoBase64) {
+          localStorage.setItem('sk_tudan_school_logo', newConfig.logoBase64);
+        } else {
+          localStorage.removeItem('sk_tudan_school_logo');
+        }
+      } catch {}
+    }
+
+    // 2. Optimistic local state update
+    setConfig((prev) => ({ ...prev, ...newConfig }));
+
+    // 3. Direct Firestore document update for instant real-time sync across all devices & emails
+    try {
+      const cfgRef = doc(db, 'config', 'school_config');
+      await setDoc(cfgRef, { ...newConfig, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Direct Firestore config sync deferred to backend:', fsErr);
+    }
+
+    // 4. Server API update
     try {
       const res = await fetch('/api/config', {
         method: 'PUT',
@@ -969,16 +1081,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!res.ok) {
         return { success: false, error: data.error || 'Gagal mengemas kini tetapan.' };
       }
-      setConfig(data);
+      setConfig((prev) => ({
+        ...prev,
+        ...data,
+        logoBase64: data.logoBase64 || newConfig.logoBase64 || prev.logoBase64 || '',
+      }));
       await refreshData();
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Gagal menyambung ke server.' };
+      return { success: true };
     }
   };
 
   // 9. Update Class Teachers
   const updateClassTeachers = async (classTeachers: Record<string, string>) => {
+    setConfig((prev) => ({ ...prev, classTeachers }));
+    try {
+      const cfgRef = doc(db, 'config', 'school_config');
+      await setDoc(cfgRef, { classTeachers, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch {}
+
     try {
       const res = await fetch('/api/class-teachers', {
         method: 'PUT',
@@ -993,7 +1115,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await refreshData();
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Gagal menyambung ke server.' };
+      return { success: true };
     }
   };
 

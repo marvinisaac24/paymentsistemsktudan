@@ -47,9 +47,9 @@ const SinglePibgReceiptBlock: React.FC<SinglePibgBlockProps> = ({ copyTitle, tra
 
       {/* School Emblem & Title */}
       <div className="flex items-start space-x-3 mb-3">
-        {config.logoBase64 ? (
+        {(config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null)) ? (
           <img
-            src={config.logoBase64}
+            src={config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') || '' : '')}
             alt="Logo Sekolah"
             className="w-12 h-12 object-contain rounded border border-slate-200 p-0.5 shrink-0"
           />

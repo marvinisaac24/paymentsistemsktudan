@@ -23,6 +23,124 @@ const __dirname = path.dirname(__filename);
 
 const DATA_DIR = path.resolve(__dirname, 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'database.json');
+const FIREBASE_CONFIG_FILE = path.resolve(__dirname, 'firebase-applet-config.json');
+
+let firebaseConfig: {
+  projectId: string;
+  firestoreDatabaseId: string;
+  apiKey: string;
+} | null = null;
+
+if (fs.existsSync(FIREBASE_CONFIG_FILE)) {
+  try {
+    firebaseConfig = JSON.parse(fs.readFileSync(FIREBASE_CONFIG_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('Error loading firebase config in server.ts', e);
+  }
+}
+
+// Convert JavaScript value into Firestore REST API value format
+function toFirestoreValue(val: any): any {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    if (Number.isInteger(val)) return { integerValue: String(val) };
+    return { doubleValue: val };
+  }
+  if (typeof val === 'string') return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map(toFirestoreValue) } };
+  }
+  if (typeof val === 'object') {
+    const fields: Record<string, any> = {};
+    for (const k of Object.keys(val)) {
+      if (val[k] !== undefined) fields[k] = toFirestoreValue(val[k]);
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+// Convert Firestore REST field back to JavaScript value
+function fromFirestoreValue(val: any): any {
+  if (!val) return null;
+  if ('nullValue' in val) return null;
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('integerValue' in val) return parseInt(val.integerValue, 10);
+  if ('doubleValue' in val) return val.doubleValue;
+  if ('stringValue' in val) return val.stringValue;
+  if ('arrayValue' in val) {
+    return (val.arrayValue.values || []).map(fromFirestoreValue);
+  }
+  if ('mapValue' in val) {
+    const res: any = {};
+    const f = val.mapValue.fields || {};
+    for (const k of Object.keys(f)) {
+      res[k] = fromFirestoreValue(f[k]);
+    }
+    return res;
+  }
+  return null;
+}
+
+// Asynchronously sync School Config (with logo) to Firestore config/school_config
+async function syncConfigToFirestore(cfg: SchoolConfig) {
+  if (!firebaseConfig) return;
+  try {
+    const fields: Record<string, any> = {};
+    for (const k of Object.keys(cfg)) {
+      if ((cfg as any)[k] !== undefined) {
+        fields[k] = toFirestoreValue((cfg as any)[k]);
+      }
+    }
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/config/school_config?key=${firebaseConfig.apiKey}`;
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+  } catch (err) {
+    console.warn('syncConfigToFirestore background sync failed:', err);
+  }
+}
+
+// Asynchronously sync System State (students, transactions, feeItems, auditLogs) to Firestore system/sk_tudan_state
+let syncStateTimer: NodeJS.Timeout | null = null;
+function debouncedSyncStateToFirestore(database: DatabaseSchema) {
+  if (syncStateTimer) clearTimeout(syncStateTimer);
+  syncStateTimer = setTimeout(async () => {
+    if (!firebaseConfig) return;
+    try {
+      // Omit bloated logoBase64 from sk_tudan_state to remain strictly below the 1MB Firestore doc limit
+      const configSummary = { ...database.config };
+      delete configSummary.logoBase64;
+
+      const payload = {
+        students: database.students,
+        transactions: database.transactions,
+        feeItems: database.feeItems,
+        auditLogs: database.auditLogs,
+        config: configSummary,
+        receiptCounter: database.receiptCounter,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      const fields: Record<string, any> = {};
+      for (const k of Object.keys(payload)) {
+        fields[k] = toFirestoreValue((payload as any)[k]);
+      }
+
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/system/sk_tudan_state?key=${firebaseConfig.apiKey}`;
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      });
+    } catch (err) {
+      console.warn('debouncedSyncStateToFirestore background sync failed:', err);
+    }
+  }, 1000);
+}
 
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI() : null;
 
@@ -46,22 +164,16 @@ function loadDatabase(): DatabaseSchema {
     try {
       const content = fs.readFileSync(DB_FILE, 'utf-8');
       const parsed: DatabaseSchema = JSON.parse(content);
-      // Ensure classTeachers is populated
       let needsSave = false;
       if (!parsed.config.classTeachers || Object.keys(parsed.config.classTeachers).length === 0) {
         parsed.config.classTeachers = { ...INITIAL_CLASS_TEACHERS };
         needsSave = true;
       }
-      if (!parsed.config.schoolCode || parsed.config.schoolCode !== 'YBA4111') {
+      if (!parsed.config.schoolCode) {
         parsed.config.schoolCode = 'YBA4111';
         needsSave = true;
       }
-      if (
-        !parsed.config.adminName ||
-        parsed.config.adminName !== 'LIM AI GIOK' ||
-        parsed.config.adminTitle !== 'Guru Besar' ||
-        parsed.config.headmasterName !== 'LIM AI GIOK'
-      ) {
+      if (!parsed.config.adminName && !parsed.config.headmasterName) {
         parsed.config.adminName = 'LIM AI GIOK';
         parsed.config.adminTitle = 'Guru Besar';
         parsed.config.headmasterName = 'LIM AI GIOK';
@@ -103,9 +215,38 @@ function saveDatabase(db: DatabaseSchema) {
   const tempFile = `${DB_FILE}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf-8');
   fs.renameSync(tempFile, DB_FILE);
+  debouncedSyncStateToFirestore(db);
 }
 
 let db = loadDatabase();
+
+// Hydrate config and logo from Firestore on boot if available
+if (firebaseConfig) {
+  (async () => {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/config/school_config?key=${firebaseConfig.apiKey}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const remoteConfig: any = {};
+        for (const k of Object.keys(data.fields || {})) {
+          remoteConfig[k] = fromFirestoreValue(data.fields[k]);
+        }
+        if (remoteConfig.schoolName || remoteConfig.logoBase64) {
+          db.config = {
+            ...db.config,
+            ...remoteConfig,
+            logoBase64: remoteConfig.logoBase64 || db.config.logoBase64 || '',
+          };
+          saveDatabase(db);
+          console.log('Hydrated school config & logo successfully from Firestore!');
+        }
+      }
+    } catch (e) {
+      console.warn('Initial Firestore hydration failed:', e);
+    }
+  })();
+}
 
 async function startServer() {
   const app = express();
@@ -176,6 +317,7 @@ async function startServer() {
     });
 
     saveDatabase(db);
+    syncConfigToFirestore(db.config);
     res.json(db.config);
   });
 
@@ -204,6 +346,7 @@ async function startServer() {
     });
 
     saveDatabase(db);
+    syncConfigToFirestore(db.config);
     res.json(db.config.classTeachers);
   });
 

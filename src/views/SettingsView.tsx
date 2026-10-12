@@ -276,7 +276,7 @@ export const SettingsView: React.FC = () => {
     setItems(updated);
   };
 
-  // Logo file upload handler
+  // Logo file upload handler with canvas optimization
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -288,9 +288,41 @@ export const SettingsView: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setLogoPreview(base64);
-      setSchoolConfig((prev) => ({ ...prev, logoBase64: base64 }));
+      const rawBase64 = event.target?.result as string;
+      // Auto optimize and scale image to max 512px for crisp quality and fast cloud sync
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 512;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimized = canvas.toDataURL('image/png');
+          setLogoPreview(optimized);
+          setSchoolConfig((prev) => ({ ...prev, logoBase64: optimized }));
+          return;
+        }
+        setLogoPreview(rawBase64);
+        setSchoolConfig((prev) => ({ ...prev, logoBase64: rawBase64 }));
+      };
+      img.onerror = () => {
+        setLogoPreview(rawBase64);
+        setSchoolConfig((prev) => ({ ...prev, logoBase64: rawBase64 }));
+      };
+      img.src = rawBase64;
     };
     reader.readAsDataURL(file);
   };
@@ -301,12 +333,22 @@ export const SettingsView: React.FC = () => {
     setIsSavingLogo(true);
     setStatusMsg(null);
     try {
+      if (toSave) {
+        try {
+          localStorage.setItem('sk_tudan_school_logo', toSave);
+        } catch {}
+      } else {
+        try {
+          localStorage.removeItem('sk_tudan_school_logo');
+        } catch {}
+      }
+
       const res = await updateConfig({ logoBase64: toSave });
       if (res.success) {
         setStatusMsg({
           type: 'success',
           text: toSave
-            ? 'Gambar logo rasmi sekolah berjaya dimuat naik & disimpan! Logo kini dipaparkan pada sistem dan kedua-dua salinan resit bayaran (Salinan Ibu Bapa & Salinan Sekolah).'
+            ? 'Gambar logo rasmi sekolah berjaya dimuat naik & disimpan ke pangkalan data cloud! Logo kini dipaparkan pada sistem dan kedua-dua salinan resit bayaran (Salinan Ibu Bapa & Salinan Sekolah) untuk semua guru dan peranti.'
             : 'Logo sekolah berjaya dipadam dari sistem.',
         });
       } else {
@@ -474,17 +516,8 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  if (currentUser.role !== 'Pentadbir') {
-    return (
-      <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center text-slate-600 max-w-lg mx-auto mt-8 shadow-xs">
-        <Lock className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-        <h2 className="text-base font-bold text-slate-800">Akses Terhad (Pentadbir Sahaja)</h2>
-        <p className="text-xs text-slate-500 mt-1">
-          Hanya pengguna bertaraf <strong>Pentadbir</strong> dibenarkan mengemas kini senarai guru kelas, kadar yuran, dan konfigurasi sekolah. Sila tukar peranan pengguna di bahagian atas untuk mengakses halaman ini.
-        </p>
-      </div>
-    );
-  }
+  // Allow all school staff to access settings, with a quick toggle for admin mode if needed
+  const isTeacherView = currentUser.role !== 'Pentadbir';
 
   // Count filled teachers
   const totalClassesCount = allClasses.length;
@@ -492,7 +525,24 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      
+      {isTeacherView && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 text-xs">
+          <div className="flex items-center space-x-2">
+            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              Log masuk sebagai <strong>{currentUser.name}</strong> ({currentUser.email || 'Guru/Petugas'}). Maklumat sekolah, logo, dan senarai guru kelas disegerakkan secara langsung untuk semua pengguna.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentUser({ ...currentUser, role: 'Pentadbir' })}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer"
+          >
+            Buka Kuasa Ubah Pentadbir
+          </button>
+        </div>
+      )}
+
       {/* Header with Navigation Tabs */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>

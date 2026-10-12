@@ -58,11 +58,13 @@ function renderPibgReceiptHalf(doc: jsPDF, opts: RenderHalfOptions): void {
   curY += 4;
 
   // 2. School Title & Official Heading
-  const hasLogo = Boolean(config.logoBase64 && config.logoBase64.startsWith('data:image'));
+  const activeLogo = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
+  const hasLogo = Boolean(activeLogo && activeLogo.startsWith('data:image'));
   let textStartX = marginX;
-  if (hasLogo) {
+  if (hasLogo && activeLogo) {
     try {
-      doc.addImage(config.logoBase64!, 'PNG', marginX, curY - 1, 13, 13);
+      const imgFormat = (activeLogo.includes('image/jpeg') || activeLogo.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(activeLogo, imgFormat, marginX, curY - 1, 13, 13);
       textStartX = marginX + 16;
     } catch {
       textStartX = marginX;

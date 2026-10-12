@@ -298,10 +298,12 @@ function renderReceiptPage(doc: jsPDF, ctx: PageRenderContext) {
   const logoBoxWidth = 24;
   const logoBoxHeight = 24;
 
-  if (config.logoBase64 && config.logoBase64.startsWith('data:image')) {
+  const activeLogo = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
+
+  if (activeLogo && activeLogo.startsWith('data:image')) {
     try {
-      const imgFormat = (config.logoBase64.includes('image/jpeg') || config.logoBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
-      doc.addImage(config.logoBase64, imgFormat, marginX, curY, logoBoxWidth, logoBoxHeight);
+      const imgFormat = (activeLogo.includes('image/jpeg') || activeLogo.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(activeLogo, imgFormat, marginX, curY, logoBoxWidth, logoBoxHeight);
     } catch {
       drawSchoolEmblemPlaceholder(doc, marginX, curY, logoBoxWidth, logoBoxHeight);
     }
@@ -790,10 +792,11 @@ function renderReceiptHalf(doc: jsPDF, ctx: ReceiptHalfContext) {
 
   // School Logo / Emblem
   const logoSize = 13.5;
-  if (config.logoBase64 && config.logoBase64.startsWith('data:image')) {
+  const activeLogoCompact = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
+  if (activeLogoCompact && activeLogoCompact.startsWith('data:image')) {
     try {
-      const imgFormat = (config.logoBase64.includes('image/jpeg') || config.logoBase64.includes('image/jpg')) ? 'JPEG' : 'PNG';
-      doc.addImage(config.logoBase64, imgFormat, marginX, curY, logoSize, logoSize);
+      const imgFormat = (activeLogoCompact.includes('image/jpeg') || activeLogoCompact.includes('image/jpg')) ? 'JPEG' : 'PNG';
+      doc.addImage(activeLogoCompact, imgFormat, marginX, curY, logoSize, logoSize);
     } catch {
       drawSchoolEmblemPlaceholder(doc, marginX, curY, logoSize, logoSize);
     }

@@ -32,6 +32,8 @@ const SingleReceiptBlock: React.FC<SingleReceiptProps> = ({
 }) => {
   const classTeacherName = transaction.classTeacherName || config.classTeachers?.[transaction.studentClass] || 'Guru Kelas SK Tudan';
 
+  const logoSrc = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
+
   return (
     <div className="receipt-single-block border border-slate-300 rounded-lg p-4 sm:p-5 bg-white text-slate-900 font-sans text-xs relative">
       {/* Top Header & Copy Badge */}
@@ -53,9 +55,9 @@ const SingleReceiptBlock: React.FC<SingleReceiptProps> = ({
 
       {/* School Emblem & Title */}
       <div className="flex items-start space-x-3 mb-3">
-        {config.logoBase64 ? (
+        {logoSrc ? (
           <img
-            src={config.logoBase64}
+            src={logoSrc}
             alt="Logo Sekolah"
             className="w-11 h-11 object-contain rounded border border-slate-200 p-0.5 shrink-0"
           />

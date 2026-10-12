@@ -110,10 +110,11 @@ export function generatePhotoPaymentsPdf({
       // School Logo Slot
       const logoW = 16;
       const logoH = 16;
-      if (config.logoBase64 && config.logoBase64.startsWith('data:image')) {
+      const activeLogo = config.logoBase64 || (typeof window !== 'undefined' ? localStorage.getItem('sk_tudan_school_logo') : null);
+      if (activeLogo && activeLogo.startsWith('data:image')) {
         try {
-          const imgFmt = config.logoBase64.includes('image/png') ? 'PNG' : 'JPEG';
-          doc.addImage(config.logoBase64, imgFmt, marginX, curY, logoW, logoH);
+          const imgFmt = activeLogo.includes('image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(activeLogo, imgFmt, marginX, curY, logoW, logoH);
         } catch {
           drawEmblemBox(doc, marginX, curY, logoW, logoH);
         }

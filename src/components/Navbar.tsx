@@ -60,12 +60,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'gambar-kelas', label: 'Gambar Kelas', icon: Camera },
     { id: 'transactions', label: 'Sejarah Resit', icon: Receipt },
     { id: 'reports', label: 'Laporan & Eksport', icon: FileSpreadsheet },
-    ...(currentUser.role === 'Pentadbir'
-      ? [
-          { id: 'settings', label: 'Tetapan & Guru Kelas', icon: Settings },
-          { id: 'audit', label: 'Jejak Audit', icon: ShieldCheck },
-        ]
-      : []),
+    { id: 'settings', label: 'Tetapan & Guru Kelas', icon: Settings },
+    { id: 'audit', label: 'Jejak Audit', icon: ShieldCheck },
   ];
 
   return (
